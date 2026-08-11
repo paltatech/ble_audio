@@ -1,6 +1,8 @@
 #include <zephyr/kernel.h>
 
+#include "app_streamctrl.h"
+
 int main(void)
 {
-	return 0;
+	return app_streamctrl_start();
 }

@@ -1,4 +1,5 @@
-# Add each middleware's own subdirectory here as it's implemented, e.g.:
-#
-# add_subdirectory(ble)
-# add_subdirectory(storage)
+add_subdirectory(led_handler)
+add_subdirectory(button_handler)
+add_subdirectory(audio_handler)
+add_subdirectory(codec_handler)
+add_subdirectory(ble_audio_handler)

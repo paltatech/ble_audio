@@ -152,9 +152,12 @@ _build_ble_audio_ble_audio_board_nrf5340_cpuapp/
 - `src/` — application source code, layered:
   - `common/` — shared types, macros, and dependency-free helpers (includes
     firmware version metadata, `app_version.c/.h`)
-  - `core/` — low-level hardware/peripheral handling and system bring-up
-  - `middlewares/` — reusable services (BLE, storage, power, ...), one subfolder each
-  - `application/` — top-level business logic that orchestrates the above
+  - `core/` — reserved for low-level system bring-up; currently empty
+  - `middlewares/` — one `<x>_handler/` subfolder per service:
+    `led_handler`, `button_handler`, `audio_handler` (I2S output),
+    `codec_handler` (LC3), `ble_audio_handler` (LE Audio unicast server)
+  - `application/` — `app_streamctrl.c/.h`, the headset state machine that
+    orchestrates the middlewares above
 
   Each layer may only depend on the ones above it in this list (see the
   `README.md` in each folder). `main.c` stays a thin entry point that wires
