@@ -13,7 +13,7 @@ manifest:
       repo-path: vx_zephyr_boards
       path: zephyr_boards
       remote: origin
-      revision: develop
+      revision: ble_audio_board
       import: false
   self:
     path: ble_audio

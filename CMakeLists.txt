@@ -1,6 +1,5 @@
 cmake_minimum_required(VERSION 3.13.1)
 
-# TODO: set once the target board/MCU is decided (see boards/)
 set(BOARD_ROOT $ENV{ZEPHYR_BOARD_ROOT})
 
 find_package(

@@ -5,14 +5,15 @@ has not been added yet (see [CHANGELOG](CHANGELOG)).
 
 ## Status
 
-The target board/MCU is not yet finalized — see the `TODO` markers in:
-
-- [tools/make/config.mk](tools/make/config.mk) — `BOARD`
-- [select-ncs-toolchain.sh](select-ncs-toolchain.sh) — NCS toolchain version
-- [boards/](boards/) — board-specific `.conf` / `.overlay` files
+Target board is `ble_audio_board` (nRF52805, based on `vx_001c_g` — see
+`zephyr_boards`' `ble_audio_board` branch). NCS/Zephyr SDK version is not
+yet finalized — see the `TODO` marker in
+[select-ncs-toolchain.sh](select-ncs-toolchain.sh).
 
 [west.yml](west.yml) pulls `nrf` (`vx_sdk_nrf@manifest-rev`) and
-`zephyr_boards` (`vx_zephyr_boards@develop`) from `paltatech`.
+`zephyr_boards` (`vx_zephyr_boards@ble_audio_board`) from `paltatech`. The
+`zephyr_boards` pin should move back to `develop` once that branch is
+merged.
 
 ## SDK Version
 
@@ -59,9 +60,8 @@ make west-update
 make build
 ```
 
-This builds the firmware for the configured board (see
-`tools/make/config.mk` — currently a placeholder until the target board is
-selected).
+This builds the firmware for the configured board (default: `ble_audio_board`,
+set in `tools/make/config.mk`).
 
 ### Clean Build
 
@@ -71,16 +71,16 @@ make clean
 
 ### Configure Board
 
-Edit `tools/make/config.mk` to set the target board:
+Edit `tools/make/config.mk` to change the target board:
 
 ```makefile
-BOARD ?= <your-board-here>
+BOARD ?= ble_audio_board
 ```
 
 Or override on the command line:
 
 ```bash
-make build BOARD=<your-board-here>
+make build BOARD=<other-board>
 ```
 
 ## Flash Commands
