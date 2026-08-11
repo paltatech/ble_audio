@@ -1,5 +1,5 @@
-# TODO: NCS/Zephyr SDK version is not finalized yet - defaulting to the same
-# toolchain used by sibling projects in this workspace (Zephyr 3.6.99).
+# NCS v2.7.0 (Zephyr 3.6.99), matching the toolchain the sdk_nrf pin in
+# west.yml was built and validated against.
 
 declare -A toolchain_map
 

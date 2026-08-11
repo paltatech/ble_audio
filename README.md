@@ -6,9 +6,7 @@ has not been added yet (see [CHANGELOG](CHANGELOG)).
 ## Status
 
 Target board is `ble_audio_board` (nRF52805, based on `vx_001c_g` — see
-`zephyr_boards`' `ble_audio_board` branch). NCS/Zephyr SDK version is not
-yet finalized — see the `TODO` marker in
-[select-ncs-toolchain.sh](select-ncs-toolchain.sh).
+`zephyr_boards`' `ble_audio_board` branch), built with NCS v2.7.0.
 
 [west.yml](west.yml) pulls `nrf` (`vx_sdk_nrf@io_board`) and
 `zephyr_boards` (`vx_zephyr_boards@ble_audio_board`) from `paltatech`. Both
@@ -17,9 +15,9 @@ merged.
 
 ## SDK Version
 
-- **Zephyr RTOS**: TBD
-- **nRF Connect SDK**: TBD
-- **Zephyr SDK (Toolchain)**: TBD
+- **Zephyr RTOS**: 3.6.99
+- **nRF Connect SDK**: v2.7.0
+- **Zephyr SDK (Toolchain)**: 0.16.5
 
 ## Prerequisites
 
