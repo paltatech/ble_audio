@@ -93,8 +93,9 @@ lint-cmake:
 # J-Link serial number (override with JLINK_SERIAL=xxx)
 JLINK_SERIAL ?=
 
-# TODO: set once the target board/MCU is decided
-JLINK_DEVICE ?= TODO_DEVICE
+# nRF5340 app core (see boards/paltatech/ble_audio_board/board.cmake in
+# zephyr_boards for the matching jlink runner args)
+JLINK_DEVICE ?= nrf5340_xxaa_app
 
 ifdef JLINK_SERIAL
     JLINK_OPT = --tool-opt '-usb $(JLINK_SERIAL)'

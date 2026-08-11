@@ -5,8 +5,11 @@ has not been added yet (see [CHANGELOG](CHANGELOG)).
 
 ## Status
 
-Target board is `ble_audio_board` (nRF52805, based on `vx_001c_g` — see
-`zephyr_boards`' `ble_audio_board` branch), built with NCS v2.7.0.
+Target board is `ble_audio_board` (nRF5340, based on the nRF5340 Audio DK —
+see `zephyr_boards`' `ble_audio_board` branch), built with NCS v2.7.0. This
+is Nordic's real LE Audio-capable part; a real LE Audio stack (LC3 codec,
+ISO channels) needs far more RAM/compute than a single-core nRF52 chip
+provides.
 
 [west.yml](west.yml) pulls `nrf` (`vx_sdk_nrf@io_board`) and
 `zephyr_boards` (`vx_zephyr_boards@ble_audio_board`) from `paltatech`. Both
@@ -58,8 +61,12 @@ make west-update
 make build
 ```
 
-This builds the firmware for the configured board (default: `ble_audio_board`,
-set in `tools/make/config.mk`).
+This builds the firmware for the configured board (default:
+`ble_audio_board/nrf5340/cpuapp`, set in `tools/make/config.mk`). The
+network core's Bluetooth controller image is built automatically as a
+child image (`CONFIG_NCS_INCLUDE_RPMSG_CHILD_IMAGE`) - no `--sysbuild`
+needed for this NCS revision. Output is `zephyr/merged.hex`, combining
+both cores.
 
 ### Clean Build
 
@@ -72,7 +79,7 @@ make clean
 Edit `tools/make/config.mk` to change the target board:
 
 ```makefile
-BOARD ?= ble_audio_board
+BOARD ?= ble_audio_board/nrf5340/cpuapp
 ```
 
 Or override on the command line:
@@ -136,8 +143,9 @@ make help
 
 Build artifacts are placed in:
 ```
-_build_ble_audio_<board>/
+_build_ble_audio_ble_audio_board_nrf5340_cpuapp/
 ```
+(`BOARD`'s slashes are replaced with underscores for the directory name.)
 
 ## Folder Layout
 
