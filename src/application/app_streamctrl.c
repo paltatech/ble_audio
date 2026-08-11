@@ -56,6 +56,7 @@ static void on_stream_recv(const uint8_t *data, size_t len)
 static void on_stream_stopped(void)
 {
 	LOG_INF("Stream stopped");
+	codec_handler_reset();
 }
 
 static void on_button_pressed(void)

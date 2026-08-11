@@ -48,3 +48,10 @@ int codec_handler_decode(const uint8_t *data, size_t len, int16_t *pcm_out)
 
 	return AUDIO_MAX_SAMPLES_PER_FRAME;
 }
+
+void codec_handler_reset(void)
+{
+	decoder = NULL;
+	configured_freq_hz = 0;
+	configured_frame_us = 0;
+}

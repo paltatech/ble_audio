@@ -14,4 +14,10 @@ int codec_handler_configure(int freq_hz, int frame_duration_us);
  * of PCM samples written, or a negative error code. */
 int codec_handler_decode(const uint8_t *data, size_t len, int16_t *pcm_out);
 
+/* Releases the decoder. Call when a stream stops, so a stale decoder
+ * isn't left configured for a connection that's gone. After this,
+ * codec_handler_decode() returns -ENODEV until codec_handler_configure()
+ * is called again. */
+void codec_handler_reset(void);
+
 #endif /* CODEC_HANDLER_H_ */
