@@ -1,0 +1,9 @@
+menu "BLE Audio"
+
+# TODO: add BLE Audio specific Kconfig options here as functionality is implemented
+
+endmenu
+
+menu "Zephyr Kernel"
+source "Kconfig.zephyr"
+endmenu

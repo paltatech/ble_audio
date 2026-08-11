@@ -1,1 +1,159 @@
-# ble_audio
+# BLE Audio
+
+BLE Audio firmware project. This is a baseline scaffold — application code
+has not been added yet (see [CHANGELOG](CHANGELOG)).
+
+## Status
+
+The target board/MCU is not yet finalized — see the `TODO` markers in:
+
+- [tools/make/config.mk](tools/make/config.mk) — `BOARD`
+- [select-ncs-toolchain.sh](select-ncs-toolchain.sh) — NCS toolchain version
+- [boards/](boards/) — board-specific `.conf` / `.overlay` files
+
+[west.yml](west.yml) pulls `nrf` (`vx_sdk_nrf@manifest-rev`) and
+`zephyr_boards` (`vx_zephyr_boards@develop`) from `paltatech`.
+
+## SDK Version
+
+- **Zephyr RTOS**: TBD
+- **nRF Connect SDK**: TBD
+- **Zephyr SDK (Toolchain)**: TBD
+
+## Prerequisites
+
+- **NCS Toolchain** installed at:
+  - Linux: `~/ncs/toolchains/<hash>`
+  - Windows: `C:/ncs/toolchains/<hash>`
+- **J-Link** debugger for flashing and debugging
+
+## Project Setup
+
+### 1. Initialize Environment
+
+Source the environment script to set up paths and toolchain:
+
+```bash
+source ./start-zephyr-env.sh
+```
+
+This script:
+- Adds NCS toolchain binaries to PATH
+- Sets up Zephyr SDK and toolchain variant
+- Exports board root for custom board definitions
+- Sources the Zephyr environment
+
+### 2. Fetch Dependencies
+
+On first setup, update the west manifest and fetch all dependencies:
+
+```bash
+make west-update
+```
+
+## Build Commands
+
+### Build the Project
+
+```bash
+make build
+```
+
+This builds the firmware for the configured board (see
+`tools/make/config.mk` — currently a placeholder until the target board is
+selected).
+
+### Clean Build
+
+```bash
+make clean
+```
+
+### Configure Board
+
+Edit `tools/make/config.mk` to set the target board:
+
+```makefile
+BOARD ?= <your-board-here>
+```
+
+Or override on the command line:
+
+```bash
+make build BOARD=<your-board-here>
+```
+
+## Flash Commands
+
+### Flash with Default J-Link
+
+```bash
+make flash
+```
+
+### Flash with Specific J-Link Serial Number
+
+```bash
+make flash JLINK_SERIAL=683980738
+```
+
+## Debug Commands
+
+### Start GDB Server
+
+```bash
+make start-gdb-server
+```
+
+### Connect GDB to Target
+
+```bash
+make debug
+```
+
+## Release
+
+```bash
+./prepare_release.sh
+```
+
+Builds the firmware and packages a versioned release artifact into
+`release/`.
+
+## Utility Commands
+
+### Show Build Path
+
+```bash
+make print-build-path
+```
+
+### Show All Available Targets
+
+```bash
+make help
+```
+
+## Build Output
+
+Build artifacts are placed in:
+```
+_build_ble_audio_<board>/
+```
+
+## Folder Layout
+
+- `src/` — application source code, layered:
+  - `common/` — shared types, macros, and dependency-free helpers (includes
+    firmware version metadata, `app_version.c/.h`)
+  - `core/` — low-level hardware/peripheral handling and system bring-up
+  - `middlewares/` — reusable services (BLE, storage, power, ...), one subfolder each
+  - `application/` — top-level business logic that orchestrates the above
+
+  Each layer may only depend on the ones above it in this list (see the
+  `README.md` in each folder). `main.c` stays a thin entry point that wires
+  everything together.
+- `boards/` — board-specific devicetree overlays and Kconfig fragments
+- `docs/` — design notes, test reports, and other project documentation
+- `release/` — packaged release artifacts (populated by `prepare_release.sh`)
+- `tools/` — build system helpers (CMake, Make, gitlint, clang-format/cmake-format)
