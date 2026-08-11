@@ -7,7 +7,7 @@ manifest:
       repo-path: vx_sdk_nrf
       path: nrf
       remote: origin
-      revision: manifest-rev
+      revision: io_board
       import: true
     - name: zephyr_boards
       repo-path: vx_zephyr_boards

@@ -10,9 +10,9 @@ Target board is `ble_audio_board` (nRF52805, based on `vx_001c_g` — see
 yet finalized — see the `TODO` marker in
 [select-ncs-toolchain.sh](select-ncs-toolchain.sh).
 
-[west.yml](west.yml) pulls `nrf` (`vx_sdk_nrf@manifest-rev`) and
-`zephyr_boards` (`vx_zephyr_boards@ble_audio_board`) from `paltatech`. The
-`zephyr_boards` pin should move back to `develop` once that branch is
+[west.yml](west.yml) pulls `nrf` (`vx_sdk_nrf@io_board`) and
+`zephyr_boards` (`vx_zephyr_boards@ble_audio_board`) from `paltatech`. Both
+pins should move back to `develop`/`manifest-rev` once those branches are
 merged.
 
 ## SDK Version
