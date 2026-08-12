@@ -128,6 +128,25 @@ needed `gcc-multilib`/`g++-multilib` added (the sibling's second commit
 runner that doesn't have these preinstalled the way this dev
 environment does).
 
+**Checked whether `mps3/an547` is still worth keeping, now that
+`gcc-multilib` gives real 32-bit `native_sim` coverage - it is,
+they're orthogonal.** `gcc-multilib` only changes `native_sim`'s
+pointer width; it doesn't touch `mps3/an547` at all. Confirmed via
+`file` on both suites' output binaries: `native_sim` (either variant)
+is always a host-`gcc`-compiled x86 ELF, while `mps3/an547` is a genuine
+`ARM, EABI5` binary from the real `arm-zephyr-eabi-gcc` cross-toolchain,
+run under QEMU's Cortex-M55 simulation. Word width (32 vs. 64-bit,
+covered by the two `native_sim` variants) and target toolchain/ISA/
+embedded memory model (host-native vs. real-cross-compiled-ARM, only
+`mps3/an547` covers this) are two different axes, not one - and
+`mps3/an547` already caught a real bug neither `native_sim` variant
+could have (the `CONFIG_ZTEST_STACK_SIZE` overflow above: an embedded
+target's real stack is far smaller than a host process's default one).
+Removing it would remove that entire category of bug-catching, for a
+CI time cost that's small in practice (~4-5s added to the whole `make
+test` run when `native_sim/native/64` was added, going by wall-clock
+before/after).
+
 **Machine-level tool required, not just Python/west packages:**
 `qemu-system-arm` has to actually be installed on the host
 (`sudo apt-get install qemu-system-arm` on Linux) — it isn't bundled
@@ -233,6 +252,23 @@ its `lc3_encoder_mem_48k_t` (several KB) as a stack-local inside the
 LC3 memory buffer `static`. Fixed by making the parameterized test's
 buffers `static` too, matching that established convention instead of
 reintroducing the pattern that caused Priority 2's stack overflow.
+
+**Redundancy found and removed later, during Priority 5's platform
+review:** `test_decode_valid_frame_produces_pcm` (a single hand-written
+case at 48 kHz/10 ms, present since Priority 1) and the parameterized
+test above overlapped - the parameterized grid's `{48000, 10000}` case
+already exercises the identical encode→decode round trip and sample
+count. The two weren't *quite* identical: the single-case test also
+checked the PCM buffer was actually overwritten (not left at a
+sentinel value), a check the parameterized test didn't do for any of
+its 10 cases. Rather than just deleting the duplicate and losing that
+check, folded the sentinel check into every parameterized case (now
+broader coverage, not narrower) and removed the single-case test as
+fully subsumed - along with the `encode_test_frame()` helper and
+`codec_handler_test_setup()`, which existed only to serve it and would
+otherwise have been dead code. Verified: `make test` passes clean (35
+test cases, down from 38 - exactly the one removed case across the 3
+platforms it ran on - 0 failed).
 
 ## Priority 4: HIL & Multi-Harness Integration — done
 

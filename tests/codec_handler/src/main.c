@@ -14,33 +14,6 @@
 #define TEST_FRAME_BYTES 80
 #define PCM_SENTINEL	 0x5555
 
-static lc3_encoder_t encoder;
-static lc3_encoder_mem_48k_t encoder_mem;
-
-static void encode_test_frame(uint8_t *out, size_t out_len)
-{
-	int16_t pcm[AUDIO_MAX_SAMPLES_PER_FRAME];
-	int ret;
-
-	/* Content doesn't matter for these tests - just needs to be a real,
-	 * non-silent tone so the encoder produces a genuine bitstream.
-	 */
-	for (size_t i = 0; i < ARRAY_SIZE(pcm); i++) {
-		pcm[i] = (int16_t)(10000.0 * sin(2.0 * 3.14159 * 100.0 * i / TEST_FREQ_HZ));
-	}
-
-	ret = lc3_encode(encoder, LC3_PCM_FORMAT_S16, pcm, 1, (int)out_len, out);
-	zassert_ok(ret, "failed to encode test frame");
-}
-
-static void *codec_handler_test_setup(void)
-{
-	encoder = lc3_setup_encoder(TEST_FRAME_US, TEST_FREQ_HZ, 0, &encoder_mem);
-	zassert_not_null(encoder, "failed to set up test LC3 encoder");
-
-	return NULL;
-}
-
 /* codec_handler keeps module-level state (the configured decoder), so
  * reset it before every test - tests must not depend on execution order
  * (ztest doesn't guarantee one, and CONFIG_ZTEST_SHUFFLE actively
@@ -74,34 +47,13 @@ ZTEST(codec_handler, test_configure_is_idempotent)
 	zassert_ok(codec_handler_configure(TEST_FREQ_HZ, TEST_FRAME_US));
 }
 
-ZTEST(codec_handler, test_decode_valid_frame_produces_pcm)
-{
-	uint8_t frame[TEST_FRAME_BYTES];
-	int16_t pcm[AUDIO_MAX_SAMPLES_PER_FRAME];
-	int num_samples;
-	bool changed = false;
-
-	zassert_ok(codec_handler_configure(TEST_FREQ_HZ, TEST_FRAME_US));
-
-	encode_test_frame(frame, sizeof(frame));
-
-	for (size_t i = 0; i < ARRAY_SIZE(pcm); i++) {
-		pcm[i] = PCM_SENTINEL;
-	}
-
-	num_samples = codec_handler_decode(frame, sizeof(frame), pcm);
-
-	zassert_equal(num_samples, AUDIO_MAX_SAMPLES_PER_FRAME,
-		      "decode should produce a full frame of samples");
-
-	for (size_t i = 0; i < ARRAY_SIZE(pcm); i++) {
-		if (pcm[i] != PCM_SENTINEL) {
-			changed = true;
-			break;
-		}
-	}
-	zassert_true(changed, "decoded PCM buffer was never written");
-}
+/* test_decode_sample_count_matches_freq_and_duration below exercises the
+ * exact 48 kHz/10 ms round trip (as one of its 10 grid cases) that used to
+ * have its own hand-written test here, plus the "PCM buffer actually got
+ * written" check that test added - now folded into every grid case
+ * instead of just this one. A single-case test doing strictly less than
+ * the parameterized one already does would just be duplicated coverage.
+ */
 
 struct lc3_param_case {
 	int freq_hz;
@@ -139,6 +91,7 @@ ZTEST(codec_handler, test_decode_sample_count_matches_freq_and_duration)
 		int frame_bytes;
 		int expected_samples;
 		int num_samples;
+		bool changed = false;
 
 		expected_samples = lc3_frame_samples(tc->frame_duration_us, tc->freq_hz);
 		zassert_true(expected_samples > 0, "case %zu: bad freq/duration", i);
@@ -162,12 +115,28 @@ ZTEST(codec_handler, test_decode_sample_count_matches_freq_and_duration)
 		zassert_ok(codec_handler_configure(tc->freq_hz, tc->frame_duration_us),
 			   "case %zu: configure failed", i);
 
+		/* Sentinel every case, not just the count check below - a
+		 * decode that returns the right count without actually
+		 * writing PCM data would pass a count-only check.
+		 */
+		for (size_t s = 0; s < ARRAY_SIZE(pcm_out); s++) {
+			pcm_out[s] = PCM_SENTINEL;
+		}
+
 		num_samples = codec_handler_decode(frame, frame_bytes, pcm_out);
 
 		zassert_equal(num_samples, expected_samples,
 			      "case %zu (freq=%d dur=%d): decode returned %d "
 			      "samples, expected %d",
 			      i, tc->freq_hz, tc->frame_duration_us, num_samples, expected_samples);
+
+		for (int s = 0; s < expected_samples; s++) {
+			if (pcm_out[s] != PCM_SENTINEL) {
+				changed = true;
+				break;
+			}
+		}
+		zassert_true(changed, "case %zu: decoded PCM buffer was never written", i);
 	}
 }
 
@@ -187,4 +156,4 @@ ZTEST(codec_handler, test_decode_packet_loss_produces_concealment)
 		      "PLC concealment should still produce a full frame");
 }
 
-ZTEST_SUITE(codec_handler, NULL, codec_handler_test_setup, codec_handler_test_before, NULL, NULL);
+ZTEST_SUITE(codec_handler, NULL, NULL, codec_handler_test_before, NULL, NULL);
