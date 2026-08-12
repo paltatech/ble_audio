@@ -2,6 +2,7 @@
 
 #include <zephyr/fff.h>
 #include <zephyr/ztest.h>
+#include <zephyr/ztress.h>
 
 #include "app_streamctrl.h"
 #include "audio_handler.h"
@@ -33,10 +34,17 @@ FAKE_VALUE_FUNC(int, ble_audio_handler_start, const struct ble_audio_handler_cb 
  * faked out.
  */
 static const struct ble_audio_handler_cb *captured_cb;
+static button_handler_pressed_cb_t captured_button_cb;
 
 static int fake_ble_audio_handler_start(const struct ble_audio_handler_cb *cb)
 {
 	captured_cb = cb;
+	return 0;
+}
+
+static int fake_button_handler_init(button_handler_pressed_cb_t cb)
+{
+	captured_button_cb = cb;
 	return 0;
 }
 
@@ -56,7 +64,9 @@ static void app_streamctrl_test_before(void *fixture)
 	FFF_RESET_HISTORY();
 
 	captured_cb = NULL;
+	captured_button_cb = NULL;
 	ble_audio_handler_start_fake.custom_fake = fake_ble_audio_handler_start;
+	button_handler_init_fake.custom_fake = fake_button_handler_init;
 }
 
 ZTEST(app_streamctrl, test_start_initializes_all_middlewares)
@@ -143,6 +153,61 @@ ZTEST(app_streamctrl, test_stream_stopped_resets_codec)
 	captured_cb->stream_stopped();
 
 	zassert_equal(codec_handler_reset_fake.call_count, 1);
+}
+
+/* On real hardware, incoming audio (BT ISO RX) and a button press (GPIO
+ * IRQ/workqueue) are genuinely independent contexts that can interleave -
+ * unlike two concurrent stream_recv calls, which the BLE stack never
+ * produces (there is exactly one RX path). ztress drives both at once to
+ * check app_streamctrl doesn't corrupt state when they overlap.
+ */
+static bool ztress_stream_recv_handler(void *user_data, uint32_t cnt, bool last, int prio)
+{
+	uint8_t frame[4] = {1, 2, 3, 4};
+
+	ARG_UNUSED(user_data);
+	ARG_UNUSED(cnt);
+	ARG_UNUSED(last);
+	ARG_UNUSED(prio);
+
+	captured_cb->stream_recv(frame, sizeof(frame));
+
+	return true;
+}
+
+static bool ztress_button_press_handler(void *user_data, uint32_t cnt, bool last, int prio)
+{
+	ARG_UNUSED(user_data);
+	ARG_UNUSED(cnt);
+	ARG_UNUSED(last);
+	ARG_UNUSED(prio);
+
+	captured_button_cb();
+
+	return true;
+}
+
+ZTEST(app_streamctrl, test_stream_recv_survives_concurrent_button_presses)
+{
+	uint32_t repeat = 200;
+
+	codec_handler_decode_fake.return_val = 480;
+
+	zassert_ok(app_streamctrl_start());
+	zassert_not_null(captured_button_cb, "button callback should be registered");
+
+	ZTRESS_EXECUTE(
+		ZTRESS_THREAD(ztress_stream_recv_handler, NULL, repeat, 0, Z_TIMEOUT_TICKS(2)),
+		ZTRESS_THREAD(ztress_button_press_handler, NULL, repeat, 0, Z_TIMEOUT_TICKS(3)));
+
+	/* Exact counts aren't meaningful under ztress's timing jitter (see
+	 * upstream tests/ztest/ztress's own range-based asserts) - what
+	 * matters is that both contexts actually ran and nothing faulted.
+	 */
+	zassert_true(ztress_exec_count(0) > 0, "stream_recv thread never ran");
+	zassert_true(ztress_exec_count(1) > 0, "button thread never ran");
+	zassert_true(audio_handler_write_fake.call_count > 0,
+		     "expected at least some decoded audio to be written");
 }
 
 ZTEST_SUITE(app_streamctrl, NULL, NULL, app_streamctrl_test_before, NULL, NULL);
