@@ -293,13 +293,25 @@ static void disconnected(struct bt_conn *conn, uint8_t reason)
 	if (user_cb != NULL && user_cb->disconnected != NULL) {
 		user_cb->disconnected();
 	}
+}
 
+/* Real bug found on hardware: calling start_advertising() directly from
+ * disconnected() failed with -ENOMEM ("Failed to start advertising: -12")
+ * every time - the just-freed connection object hasn't necessarily been
+ * returned to the pool yet when disconnected() runs. Zephyr's own
+ * bt_conn_cb documents this exact case: use the recycled callback (fires
+ * once the connection object is actually available again) instead of
+ * restarting advertising synchronously in disconnected().
+ */
+static void recycled(void)
+{
 	start_advertising();
 }
 
 BT_CONN_CB_DEFINE(conn_callbacks) = {
 	.connected = connected,
 	.disconnected = disconnected,
+	.recycled = recycled,
 };
 
 static int set_pacs(void)

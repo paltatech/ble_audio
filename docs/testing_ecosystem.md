@@ -579,6 +579,118 @@ priorities:
   relabeled - see the board note under Priority 4 above for what was
   re-run.
 
+## Real hardware bug: network core had no ISO/Extended Advertising support
+
+Found via a real manual `make build`/`make flash` + J-Link RTT session on
+the actual nRF5340 DK (not `make test-hil` - a plain manual flash) -
+exactly the kind of thing HIL testing exists to catch, caught here by a
+human reading a live log instead.
+
+**Symptom:** `"Bluetooth initialized"` printed, but `"Advertising
+started"` never did, with no error either - looked like a hang.
+Button-press logging kept working throughout (registered earlier in
+`app_streamctrl_start()`, in an independent GPIO interrupt path), which
+is what made it look like a partial/silent hang rather than a clean
+failure at first glance.
+
+**Diagnosis:** a first attempt at more logging (`CONFIG_LOG_DEFAULT_LEVEL=4`)
+was the wrong tool - it also enabled the kernel's own `os` module debug
+logging (`z_impl_k_mutex_lock`/`unlock`), which fires fast enough to
+flood the deferred log buffer and drop the very lines needed ("N
+messages dropped" between nearly every line). Switched to a targeted
+`CONFIG_BT_HCI_CORE_LOG_LEVEL_DBG=y` instead (per-module Kconfig,
+doesn't touch the kernel's own logging) and got a clean capture. That
+showed:
+- `bt_ascs: Failed to register ISO server -134` (`-ENOTSUP`) - the
+  controller has no ISO support.
+- `opcode 0x2036 status 0x01` (`LE_Set_Extended_Advertising_Parameters`,
+  `Unknown HCI Command`) - no LE Extended Advertising support either.
+- Both errors are non-fatal individually, but the second one aborts
+  `bt_le_ext_adv_create()` → `ble_audio_handler_start()` →
+  `app_streamctrl_start()` with a real `-EIO`, so nothing after it in
+  the startup sequence ever runs.
+
+**Root cause:** the network core (`hci_ipc`, built automatically via
+`CONFIG_NCS_INCLUDE_RPMSG_CHILD_IMAGE`) was using the *default* upstream
+`hci_ipc` sample config, which enables no ISO or Extended Advertising
+support in the controller at all. `prj.conf`'s
+`CONFIG_BT_ISO_PERIPHERAL`/`CONFIG_BT_EXT_ADV` only configure the
+*host*, running on the app core - the controller is a completely
+separate build (a different Kconfig namespace entirely) that never
+inherited any of it. This isn't specific to the board swap - the
+default `hci_ipc` sample would have had the same gap regardless of
+which nRF5340 board was targeted; it just hadn't been exercised on real
+hardware until now.
+
+**Fix:** `child_image/hci_ipc.conf` - NCS's own mechanism
+(`nrf/cmake/multi_image.cmake`) for injecting Kconfig into a child
+image by file path alone, no `--sysbuild` needed (consistent with how
+this project already builds). Verified the controller is actually
+Nordic's SoftDevice Controller (`CONFIG_BT_LL_SOFTDEVICE=y`), not
+Zephyr's own open-source split link layer, by reading the real
+`.config` from an actual local build
+(`_build_ble_audio_nrf5340dk_nrf5340_cpuapp/hci_ipc/zephyr/.config`) -
+important, because Zephyr's own upstream reference fragment for this
+exact role
+(`zephyr/samples/bluetooth/hci_ipc/nrf5340_cpunet_iso_peripheral-bt_ll_sw_split.conf`)
+targets the *other* controller and forces `CONFIG_BT_LL_SW_SPLIT=y`,
+which would have fought the already-selected SDC. Used SDC-appropriate
+options instead (`CONFIG_BT_EXT_ADV`, `CONFIG_BT_ISO_PERIPHERAL`,
+`CONFIG_BT_CTLR_ADV_EXT`, `CONFIG_BT_CTLR_PERIPHERAL_ISO`,
+`CONFIG_BT_CTLR_SDC_PERIPHERAL_COUNT`), cross-checked against real
+Nordic ISO sample configs
+(`nrf/samples/bluetooth/iso_time_sync/sysbuild/hci_ipc/prj.conf`) for
+the SDC-specific symbols.
+
+**Verified, end to end:** built the fragment in, confirmed via a fresh
+`.config` that `CONFIG_BT_CTLR_ADV_EXT=y`/`CONFIG_BT_CTLR_PERIPHERAL_ISO=y`
+now land; `make test` unaffected (6/6 configurations, 0 failed - this
+only touches the network-core build, not `tests/`). The user then
+reflashed real hardware and confirmed via a new RTT log:
+`le_read_maximum_adv_data_len_complete: status 0x00` (previously
+`0x01`), the extended-advertising HCI sequence (opcodes `0x2035`/
+`0x2037`/`0x2039`) all completing `status 0x00`, and
+`"Advertising started"` printing - genuine on-device confirmation, not
+just a clean build.
+
+## Real hardware bug: advertising didn't resume after disconnect
+
+Found continuing the same real-hardware session as the fix above - once
+advertising actually started, a real central connected (confirmed via
+RTT log: `bt_hci_le_adv_set_terminated` when the connection formed,
+`le_phy_update_complete` negotiating 2M PHY, real ACL data flowing both
+directions), stayed connected for ~13 seconds, then disconnected
+cleanly (`hci_disconn_complete: status 0x00 ... reason 0x13` -
+BT_HCI_ERR_REMOTE_USER_TERM_CONN, the peer disconnected intentionally).
+Immediately after: `ble_audio_handler: Failed to start advertising: -12`
+(`-ENOMEM`) - the device stopped being discoverable/connectable the
+moment anything disconnected from it.
+
+**Root cause:** `disconnected()` in `ble_audio_handler.c` called
+`start_advertising()` (→ `bt_le_ext_adv_start()`) directly and
+synchronously. Zephyr's own `bt_conn_cb.disconnected` doc comment
+(`zephyr/include/zephyr/bluetooth/conn.h`) warns against exactly this:
+the just-freed connection object isn't necessarily back in the pool yet
+when `disconnected()` runs, so immediately trying to advertise (which
+needs to reserve a connection object for the next potential connection)
+can race and fail with `-ENOMEM`. The same header documents the fix:
+`bt_conn_cb.recycled` - "A connection object has been returned to the
+pool... Use this to e.g. re-start connectable advertising."
+
+**Fix:** moved the `start_advertising()` call from `disconnected()` to
+a new `recycled()` callback, registered in the same
+`BT_CONN_CB_DEFINE(conn_callbacks)`. `disconnected()` still runs the
+app-level callback (LED off, etc.) - only the re-advertising call moved.
+
+**Verified:** builds clean for `nrf5340dk/nrf5340/cpuapp` (same FLASH
+size as before - the change is a few bytes), `make test` unaffected
+(`ble_audio_handler.c` isn't compiled into any suite - only its header,
+for `app_streamctrl`'s FFF fakes). Not yet re-verified on hardware
+against an actual disconnect/reconnect cycle - the fix is grounded
+directly in Zephyr's own documented API contract, not just a build-clean
+guess, but a second real-hardware confirmation (connect → disconnect →
+confirm advertising resumes) is the natural next check.
+
 ## Reference material used
 
 - `zephyr/samples/bluetooth/unicast_audio_server` — minimal, confirmed
@@ -636,3 +748,13 @@ priorities:
   `boards/native/native_sim/board.yml` and a direct `file` check on a
   built `ble_audio` binary (`ELF 32-bit ... Intel 80386`) confirmed the
   same is true here, independent of trusting the commit messages alone.
+- `zephyr/samples/bluetooth/hci_ipc/nrf5340_cpunet_iso_peripheral-bt_ll_sw_split.conf`
+  and `nrf/samples/bluetooth/iso_time_sync/sysbuild/hci_ipc/prj.conf` —
+  source for `child_image/hci_ipc.conf`'s Kconfig options (split link
+  layer reference for the option *names*/relationships; the SDC sample
+  for which symbols actually apply to this board's real controller).
+  `nrf/subsys/bluetooth/controller/Kconfig` — source for
+  `CONFIG_BT_CTLR_SDC_PERIPHERAL_COUNT`'s meaning/defaults.
+- `zephyr/include/zephyr/bluetooth/conn.h` — `bt_conn_cb.disconnected`'s
+  and `.recycled`'s doc comments; source for both the diagnosis and the
+  fix of the advertising-doesn't-resume-after-disconnect bug above.
