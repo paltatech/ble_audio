@@ -1,0 +1,10 @@
+tests:
+  # No FPU/liblc3 dependency here (everything below app_streamctrl is
+  # faked), so unlike codec_handler this suite runs fine on
+  # qemu_cortex_m3 too - no need for mps3/an547.
+  ble_audio.app_streamctrl:
+    platform_allow: native_sim qemu_cortex_m3
+    integration_platforms:
+      - native_sim
+      - qemu_cortex_m3
+    tags: app_streamctrl
