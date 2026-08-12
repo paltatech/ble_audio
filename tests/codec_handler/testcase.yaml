@@ -1,6 +1,12 @@
 tests:
+  # 64-bit host (native_sim) + 32-bit QEMU target (mps3/an547, Cortex-M55)
+  # to catch pointer/alignment/data-sizing bugs early. qemu_cortex_m3 was
+  # the natural first choice for the 32-bit leg, but its SoC has no FPU,
+  # and this suite needs CONFIG_FPU (for CONFIG_LIBLC3) - mps3/an547 is
+  # QEMU-simulated too and its SoC does select CPU_HAS_FPU.
   ble_audio.codec_handler:
-    platform_allow: native_sim
+    platform_allow: native_sim mps3/an547
     integration_platforms:
       - native_sim
+      - mps3/an547
     tags: codec_handler

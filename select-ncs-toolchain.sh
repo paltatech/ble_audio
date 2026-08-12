@@ -11,3 +11,5 @@ if [[ "$OSTYPE" == "linux"* ]]; then
 else # mysys for Window
     NCS_TOOLCHAIN=/c/ncs/toolchains/${toolchain_map["v2.7.0-windows"]}
 fi
+
+export NCS_TOOLCHAIN

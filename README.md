@@ -28,6 +28,9 @@ merged.
   - Linux: `~/ncs/toolchains/<hash>`
   - Windows: `C:/ncs/toolchains/<hash>`
 - **J-Link** debugger for flashing and debugging
+- **`qemu-system-arm`** to run `make test`'s 32-bit leg (`sudo apt-get
+  install qemu-system-arm` on Linux) — see
+  [docs/testing_ecosystem.md](docs/testing_ecosystem.md)
 
 ## Project Setup
 
@@ -102,6 +105,26 @@ make flash
 make flash JLINK_SERIAL=683980738
 ```
 
+## Test Commands
+
+### Run All Tests
+
+```bash
+make test
+```
+
+Runs `tests/` under Twister across `native_sim` (64-bit host) and
+`mps3/an547` (32-bit QEMU) — see
+[docs/testing_ecosystem.md](docs/testing_ecosystem.md) for what's covered
+and why those platforms. Requires `qemu-system-arm` (see Prerequisites
+above) for the 32-bit leg.
+
+### Clean Test Output
+
+```bash
+make test-clean
+```
+
 ## Debug Commands
 
 ### Start GDB Server
@@ -165,4 +188,5 @@ _build_ble_audio_ble_audio_board_nrf5340_cpuapp/
 - `boards/` — board-specific devicetree overlays and Kconfig fragments
 - `docs/` — design notes, test reports, and other project documentation
 - `release/` — packaged release artifacts (populated by `prepare_release.sh`)
+- `tests/` — `ztest` suites, one per subfolder, run via `make test`
 - `tools/` — build system helpers (CMake, Make, gitlint, clang-format/cmake-format)

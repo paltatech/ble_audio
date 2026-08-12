@@ -1,4 +1,4 @@
-.PHONY: all build clean flash start-gdb-server debug west-update help print-build-path print-project-name print-board-name lint lint-ci lint-cmake
+.PHONY: all build clean flash start-gdb-server debug west-update help print-build-path print-project-name print-board-name lint lint-ci lint-cmake test test-clean
 
 all: west-update
 
@@ -31,6 +31,10 @@ help:
 	@echo "Debug targets:"
 	@echo "  make start-gdb-server          - Start J-Link GDB server"
 	@echo "  make debug                     - Start GDB and connect to target"
+	@echo ""
+	@echo "Test targets:"
+	@echo "  make test                      - Run tests/ under Twister ($(TEST_PLATFORMS))"
+	@echo "  make test-clean                - Remove Twister output"
 	@echo ""
 	@echo "Utility targets:"
 	@echo "  make west-update               - Update west manifest and dependencies"
@@ -86,6 +90,38 @@ lint-cmake:
 	find . -not \( -path "./_build*/*" -prune \) \
 		\( -type f -name '*.cmake' -o -name 'CMakeLists.txt' \) \
 		-exec cmake-format -c tools/format/.cmake-format.py -i {} \;
+
+# ============================================================================
+# Test targets
+# ============================================================================
+# Platforms Twister runs tests/ against: native_sim (64-bit host) plus a
+# 32-bit QEMU target to catch pointer/alignment/data-sizing bugs early.
+# mps3/an547 (Cortex-M55), not qemu_cortex_m3 - the latter's SoC has no
+# FPU, and any suite depending on CONFIG_LIBLC3 (which needs CONFIG_FPU)
+# can't run there.
+TEST_PLATFORMS ?= native_sim mps3/an547
+TWISTER_OUT ?= $(ZEPHYR_PROJECT_PATH)/twister-out
+
+# Twister's own multiprocessing needs libffi.so.7, which this toolchain's
+# bundled Python doesn't ship (only a newer libffi.so.8 is on the host).
+# Stage an isolated copy - not the whole directory it lives in, which
+# also ships an old libstdc++ that breaks ccache if put on
+# LD_LIBRARY_PATH - and point LD_LIBRARY_PATH at just that.
+LIBFFI_SHIM_DIR := $(ZEPHYR_PROJECT_PATH)/.cache/libffi-shim
+LIBFFI_SRC := $(NCS_TOOLCHAIN)/opt/nanopb/generator-bin/libffi.so.7
+
+test:
+	@mkdir -p $(LIBFFI_SHIM_DIR)
+	@[ -f $(LIBFFI_SHIM_DIR)/libffi.so.7 ] || cp $(LIBFFI_SRC) $(LIBFFI_SHIM_DIR)/
+	LD_LIBRARY_PATH="$(LIBFFI_SHIM_DIR):$$LD_LIBRARY_PATH" \
+	python3 $(ZEPHYR_BASE)/scripts/twister \
+		-T tests \
+		$(foreach p,$(TEST_PLATFORMS),-p $(p)) \
+		--extra-args NCS_TOOLCHAIN_VERSION=NONE \
+		-O $(TWISTER_OUT)
+
+test-clean:
+	rm -rf $(TWISTER_OUT)
 
 # ============================================================================
 # Flash targets

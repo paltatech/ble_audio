@@ -24,8 +24,8 @@ durable, in-repo record — the plan file is not.
 | Priority | Topic | Status |
 |---|---|---|
 | 1 | Unit tests & `native_sim` | ✅ Done — `tests/codec_handler/` |
-| 2 | Twister, 32/64-bit targets | 🔜 Next |
-| 3 | FFF mocking, devicetree fakes, parameterized tests | Pending |
+| 2 | Twister, 32/64-bit targets | ✅ Done — `make test` |
+| 3 | FFF mocking, devicetree fakes, parameterized tests | 🔜 Next |
 | 4 | HIL, pytest/Robot | Pending |
 | 5 | CI/CD, `ztress`, shuffle | Pending |
 
@@ -84,19 +84,57 @@ assumed):
      `select-ncs-toolchain.sh` version — the same root cause as the
      `--sysbuild` issue hit in Phase 0 of the plan.
 
-  Both will be wrapped into a `make test` target in Priority 2 so they
-  don't need to be remembered by hand.
+  Both are now wrapped into `make test` (see below) so they don't need
+  to be remembered by hand.
 
-## Priority 2: Twister Test Runner — next
+## Priority 2: Twister Test Runner — done
 
-Formalize what Priority 1 proved manually: every suite gets a
-`testcase.yaml`, discovered and run via `west twister -T tests/`, across
-both `native_sim` (64-bit host) and `qemu_cortex_m3` (32-bit) to catch
-pointer/alignment bugs early. `make test` in the `Makefile` wraps the
-invocation (including the environment workarounds above) so `make test`
-is all that's needed going forward.
+**What was built:** `make test` — runs `tests/` under `west twister`
+across `native_sim` (64-bit host) and `mps3/an547` (32-bit QEMU), with
+the Priority 1 environment workarounds baked in (`LD_LIBRARY_PATH`
+`libffi` shim, `NCS_TOOLCHAIN_VERSION=NONE`). `make test-clean` removes
+`twister-out/`.
 
-## Priority 3: Mocking & Value-Parameterized Tests — pending
+**Machine-level tool required, not just Python/west packages:**
+`qemu-system-arm` has to actually be installed on the host
+(`sudo apt-get install qemu-system-arm` on Linux) — it isn't bundled
+with the NCS toolchain or pulled in by `west update`. Without it,
+`make test` still *builds* the `mps3/an547` image successfully but
+fails at run time with `QEMU-NOTFOUND`. Listed in the root `README.md`'s
+Prerequisites now so it isn't rediscovered the hard way.
+
+**`qemu_cortex_m3` turned out to be the wrong 32-bit target.** It was
+the obvious first choice (it's what the doc names, and what Nordic's own
+`macros` test uses), but its SoC (TI LM3S6965) has no FPU, and
+`codec_handler` needs `CONFIG_FPU` for `CONFIG_LIBLC3`. Verified this by
+checking `soc/ti/lm3s6965`'s Kconfig for `CPU_HAS_FPU` (absent) before
+spending time chasing a build failure. `mps3/an547` (Cortex-M55) is
+QEMU-simulated too and its SoC Kconfig does `select CPU_HAS_FPU` —
+confirmed by an actual build+run, not just reading Kconfig. Any future
+suite that doesn't need FPU can still target `qemu_cortex_m3` directly;
+`TEST_PLATFORMS` in the `Makefile` is per-project, not per-suite, so a
+suite can also override its own `platform_allow` in `testcase.yaml`.
+
+**A real bug this caught:** the first `make test` run against
+`mps3/an547` hit a genuine stack overflow —
+`test_decode_packet_loss_produces_concealment` faulted with `USAGE FAULT
+Stack overflow`. LC3's real stack footprint is larger than
+`CONFIG_ZTEST_STACK_SIZE`'s default (1024 B on non-x86 targets); it just
+happened to fit under `native_sim`'s far larger default host stack, so
+Priority 1 never surfaced it. This is the same issue Nordic worked
+around in their own `sw_codec_lc3` test (`CONFIG_MAIN_STACK_SIZE=80000`,
+commented "Added large stack sizes. Can be optimized"). Fixed here with
+`CONFIG_ZTEST_STACK_SIZE=8192` in `tests/codec_handler/prj.conf` — this
+is exactly the class of bug the 32-bit/QEMU leg exists to catch, and it
+would not have been found by `native_sim` alone.
+
+**Another gap found along the way:** `select-ncs-toolchain.sh` computed
+`NCS_TOOLCHAIN` but never `export`ed it, so it was invisible to `make`
+(a child process) even though it worked fine interactively (`echo
+$NCS_TOOLCHAIN` in the same shell). `make test` needs it to locate the
+`libffi` shim source. Fixed with one `export NCS_TOOLCHAIN` line.
+
+## Priority 3: Mocking & Value-Parameterized Tests — next
 
 Plan: FFF mocks for `ble_audio_handler`'s BT calls (`bt_bap_stream_start`
 and friends) so `application/app_streamctrl.c`'s state machine can be
