@@ -1,0 +1,21 @@
+# Twister hardware-map template for the real nRF5340 Audio DK (ble_audio_board).
+#
+# Copy this file to tools/hardware-map.yml (gitignored - it holds
+# machine-specific device paths) and fill in the placeholders below,
+# then run `make test-hil`.
+#
+# Find your J-Link's serial number:
+#   nrfjprog --ids
+# Find the board's UART device path (Linux, persists across replugs):
+#   ls /dev/serial/by-id/
+#
+# Schema: zephyr/scripts/schemas/twister/hwmap-schema.yaml
+# Docs: https://docs.zephyrproject.org/latest/develop/test/twister.html#device-testing-on-real-hardware
+
+- connected: true
+  id: "REPLACE_WITH_JLINK_SERIAL_NUMBER"
+  platform: ble_audio_board/nrf5340/cpuapp
+  product: "J-Link"
+  runner: nrfjprog
+  serial: "/dev/ttyACM0"
+  baud: 115200
