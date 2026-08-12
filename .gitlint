@@ -1,0 +1,22 @@
+[general]
+ignore=body-is-missing, body-min-line-count, title-trailing-punctuation, B1
+contrib=CC1
+
+extra-path=tools/gitlint/gitlint-rules.py
+
+verbosity = 3
+
+ignore-merge-commits=true
+ignore-revert-commits=true
+ignore-fixup-commits=false
+ignore-squash-commits=false
+debug = false
+
+[title-max-length]
+line-length=70
+
+[title-must-not-contain-word]
+words=wip
+
+[body-min-length]
+min-length=3
