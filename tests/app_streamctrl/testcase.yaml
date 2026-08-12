@@ -1,10 +1,13 @@
 tests:
-  # No FPU/liblc3 dependency here (everything below app_streamctrl is
-  # faked), so unlike codec_handler this suite runs fine on
-  # qemu_cortex_m3 too - no need for mps3/an547.
+  # native_sim builds 32-bit; native_sim/native/64 is the true 64-bit
+  # variant (see docs/testing_ecosystem.md) - both run here for real
+  # word-size coverage. No FPU/liblc3 dependency here (everything below
+  # app_streamctrl is faked), so unlike codec_handler this suite also
+  # runs fine on qemu_cortex_m3 - no need for mps3/an547.
   ble_audio.app_streamctrl:
-    platform_allow: native_sim qemu_cortex_m3
+    platform_allow: native_sim native_sim/native/64 qemu_cortex_m3
     integration_platforms:
       - native_sim
+      - native_sim/native/64
       - qemu_cortex_m3
     tags: app_streamctrl

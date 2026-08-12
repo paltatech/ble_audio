@@ -97,12 +97,16 @@ lint-cmake:
 # ============================================================================
 # Test targets
 # ============================================================================
-# Platforms Twister runs tests/ against: native_sim (64-bit host) plus a
-# 32-bit QEMU target to catch pointer/alignment/data-sizing bugs early.
-# mps3/an547 (Cortex-M55), not qemu_cortex_m3 - the latter's SoC has no
-# FPU, and any suite depending on CONFIG_LIBLC3 (which needs CONFIG_FPU)
-# can't run there.
-TEST_PLATFORMS ?= native_sim mps3/an547
+# Platforms Twister runs tests/ against. native_sim actually builds
+# 32-bit (needs gcc-multilib on the host) - native_sim/native/64 is the
+# true 64-bit variant. Both plus a 32-bit QEMU target catch
+# pointer/alignment/data-sizing bugs early - see docs/testing_ecosystem.md
+# for how this was found to be mislabeled in every phase before this one.
+# mps3/an547 (Cortex-M55), not qemu_cortex_m3 for the QEMU leg - the
+# latter's SoC has no FPU, and any suite depending on CONFIG_LIBLC3
+# (which needs CONFIG_FPU) can't run there. Not every suite targets
+# every platform - see each tests/*/testcase.yaml's own platform_allow.
+TEST_PLATFORMS ?= native_sim native_sim/native/64 mps3/an547
 TWISTER_OUT ?= $(ZEPHYR_PROJECT_PATH)/twister-out
 
 # Twister's own multiprocessing needs libffi.so.7, which this toolchain's

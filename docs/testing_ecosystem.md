@@ -90,10 +90,43 @@ assumed):
 ## Priority 2: Twister Test Runner — done
 
 **What was built:** `make test` — runs `tests/` under `west twister`
-across `native_sim` (64-bit host) and `mps3/an547` (32-bit QEMU), with
-the Priority 1 environment workarounds baked in (`LD_LIBRARY_PATH`
-`libffi` shim, `NCS_TOOLCHAIN_VERSION=NONE`). `make test-clean` removes
-`twister-out/`.
+across `native_sim`, `native_sim/native/64`, and `mps3/an547` (32-bit
+QEMU), with the Priority 1 environment workarounds baked in
+(`LD_LIBRARY_PATH` `libffi` shim, `NCS_TOOLCHAIN_VERSION=NONE`). `make
+test-clean` removes `twister-out/`.
+
+**Correction found later, during Priority 5 (documented here since
+it's a Priority 2 fact, not a Priority 5 one):** this section
+originally called plain `native_sim` "64-bit host" and described it as
+the 64-bit counterpart to `mps3/an547`'s 32-bit leg. That was wrong.
+Checking two commits on a sibling project
+(`paltatech/vx_smart-pro-box-2-fw-host@e1219e8`,
+`@16f0c74`) that hit this exact issue prompted verifying it here
+directly: `file` on a built `tests/app_streamctrl` binary showed `ELF
+32-bit LSB executable, Intel 80386` for plain `native_sim`.
+`native_sim`'s `board.yml` defines the SoC variant `"64"` as an opt-in
+qualifier (`native_sim/native/64`) - without it, the build defaults to
+32-bit, and needs `gcc-multilib`/`g++-multilib` on the host (already
+installed in this dev environment, which is exactly why the mislabeling
+went unnoticed - the 32-bit build "just worked"). This means Priority 1
+and the original version of Priority 2 never actually had a 64-bit leg
+at all: `native_sim` (32-bit x86) and `mps3/an547` (32-bit ARM) were
+both 32-bit, so the "catch pointer/alignment/data-sizing bugs early"
+goal this whole section describes was never actually being met. Fixed
+by adding `native_sim/native/64` to `TEST_PLATFORMS` and to
+`codec_handler`'s/`app_streamctrl`'s `platform_allow` (both build and
+pass cleanly on it). `gpio_handlers` was deliberately left off -
+its `boards/native_sim.overlay` doesn't apply to the `native/64`
+qualifier (overlay filenames are qualifier-specific; the sibling
+project's first commit hit the same thing from the other direction,
+consolidating two qualifier-specific overlays into one when *they*
+dropped their 64-bit variant), and `gpio_handlers` is about GPIO
+simulation, not pointer/size-width bugs, so there's nothing to gain by
+chasing the overlay naming down. `.github/workflows/test.yml` also
+needed `gcc-multilib`/`g++-multilib` added (the sibling's second commit
+- their CI failed at `bits/libc-header-start.h` without it, on a fresh
+runner that doesn't have these preinstalled the way this dev
+environment does).
 
 **Machine-level tool required, not just Python/west packages:**
 `qemu-system-arm` has to actually be installed on the host
@@ -474,3 +507,13 @@ as Priority 4's HIL section:**
   repo doesn't cover (there's no west/NCS/twister CI template upstream -
   `test.yml` here is new ground, modeled on the sibling Viaanix-era
   `compile.yml`'s `nrfutil`/`west init` mechanics instead).
+- `paltatech/vx_smart-pro-box-2-fw-host@e1219e8` and `@16f0c74` — source
+  of the `native_sim` 32-vs-64-bit correction above: the first commit
+  switched that project from `native_sim/native/64` to plain
+  `native_sim` (discovering the latter is the 32-bit variant, and the
+  cost of running both is a devicetree overlay that has to be named per
+  qualifier); the second added `gcc-multilib`/`g++-multilib` to their CI
+  after hitting a real `bits/libc-header-start.h` failure without it.
+  `boards/native/native_sim/board.yml` and a direct `file` check on a
+  built `ble_audio` binary (`ELF 32-bit ... Intel 80386`) confirmed the
+  same is true here, independent of trusting the commit messages alone.

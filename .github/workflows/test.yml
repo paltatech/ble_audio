@@ -21,10 +21,16 @@ jobs:
           path: ${{ env.FIRMWARE_PATH }}
           fetch-depth: 0
 
-      - name: Install qemu-system-arm
+      # native_sim (32-bit) needs 32-bit libc headers, which this runner
+      # only ships as part of gcc-multilib/g++-multilib - confirmed via a
+      # real CI failure on a sibling project
+      # (paltatech/vx_smart-pro-box-2-fw-host@16f0c74) before that fix was
+      # found: every suite failed at bits/libc-header-start.h without it.
+      - name: Install qemu-system-arm and 32-bit build support
         run: |
           sudo apt-get update
           sudo apt-get install -y qemu-system-arm
+          sudo apt-get install --no-install-recommends -y gcc-multilib g++-multilib
 
       - name: Install nrfutil toolchain manager
         run: |
