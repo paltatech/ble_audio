@@ -7,9 +7,13 @@
 goal is twofold, and neither half is optional:
 
 1. **Build a real BLE Audio headphone** — an LE Audio unicast server
-   (headset) on the nRF5340 Audio DK, not a toy app. Real hardware
-   constraints and real protocol behavior are what make the testing work
-   meaningful.
+   (headset), not a toy app. Real hardware constraints and real protocol
+   behavior are what make the testing work meaningful. Originally targeted
+   at the nRF5340 Audio DK; real hardware turned out to be the plain
+   nRF5340 DK instead (`nrf5340dk/nrf5340/cpuapp` - standard, upstream
+   board, no custom board definition needed). That DK has no I2S codec
+   chip, so `audio_handler` (I2S output) is commented out for now - see
+   Priority 4 below for what that changed.
 2. **Work through the five testing priorities in order**, each landing as
    a concrete, runnable deliverable in this repo — not an abstract
    exercise done elsewhere and described here after the fact.
@@ -272,15 +276,26 @@ platforms it ran on - 0 failed).
 
 ## Priority 4: HIL & Multi-Harness Integration — done
 
+**Board note (added later, when real hardware turned out to be the
+plain nRF5340 DK, not the Audio DK):** everything below originally
+targeted `ble_audio_board/nrf5340/cpuapp`, a custom board in the
+`zephyr_boards` repo trimmed from Nordic's own nRF5340 Audio DK
+definition. All board references here have been updated to
+`nrf5340dk/nrf5340/cpuapp` (standard, upstream Zephyr board - no custom
+board needed at all now) and re-verified against it (`--build-only`
+below was re-run, not just relabeled). See "Board swap" below and the
+root `README.md`'s Status section for what else that board swap changed
+(`audio_handler` disabled - no I2S codec chip on this DK).
+
 **What was built:** `make test-hil` — a separate Twister invocation, not
 part of `make test`, that flashes the *real production image* (this
 project's own `CMakeLists.txt`/`src/`/`prj.conf`, not a stub under
-`tests/`) onto a physical nRF5340 Audio DK and checks its actual boot log
+`tests/`) onto a physical nRF5340 DK and checks its actual boot log
 over UART via a `pytest` harness. Pieces:
 
 - `sample.yaml` (project root, not under `tests/`) — defines
   `ble_audio.hil_boot`, `harness: pytest`, `platform_allow:
-  ble_audio_board/nrf5340/cpuapp`.
+  nrf5340dk/nrf5340/cpuapp`.
 - `pytest/test_boot.py` — two cases against the real
   `twister_harness.DeviceAdapter` API: wait for `"Bluetooth initialized"`,
   then `"Advertising started"`, via `dut.readlines_until(regex=...,
@@ -318,30 +333,33 @@ same mechanism — so the HIL test build's console differs from the
 shipped image's, without touching the product's own `prj.conf`.
 
 **A Twister CLI quirk, found by reading `testplan.py` rather than
-guessing:** `--board-root` on the `twister` CLI needs the trailing
-`/boards` segment (e.g. `$ZEPHYR_BOARD_ROOT/boards`), unlike CMake's
-`BOARD_ROOT`, which does not. Twister's own board-scanning code computes
-`board_roots = [Path(os.path.dirname(root)) for root in
-self.env.board_roots]` with an explicit comment that "internally in
-twister a board root includes the `boards` folder but in Zephyr build
-system, the board root is without the `boards`". Without the suffix,
-Twister reports `ble_audio_board/nrf5340/cpuapp` as an "unrecognized
-platform" even though the identical path works fine for `west build
--DBOARD_ROOT=...`. `test-hil`'s `Makefile` target passes the correct
-form.
+guessing (historical - applied to the old custom board, kept here since
+it'll matter again if a custom board is ever reintroduced):**
+`--board-root` on the `twister` CLI needs the trailing `/boards` segment
+(e.g. `$ZEPHYR_BOARD_ROOT/boards`), unlike CMake's `BOARD_ROOT`, which
+does not. Twister's own board-scanning code computes `board_roots =
+[Path(os.path.dirname(root)) for root in self.env.board_roots]` with an
+explicit comment that "internally in twister a board root includes the
+`boards` folder but in Zephyr build system, the board root is without
+the `boards`". Without the suffix, Twister reported the old
+`ble_audio_board/nrf5340/cpuapp` as an "unrecognized platform" even
+though the identical path worked fine for `west build -DBOARD_ROOT=...`.
+Moot now that the board is `nrf5340dk` (standard, no board root needed)
+- `test-hil`'s `Makefile` target no longer passes `--board-root` at all.
 
 **What was actually verified, and what wasn't — stated plainly because
-no nRF5340 Audio DK was available in this environment:**
+no nRF5340 DK was available in this environment:**
 
 - Verified: `twister -T . --list-tests` discovers `ble_audio.hil_boot`
-  correctly alongside all 17 existing `native_sim`/`mps3` cases (18
-  total) — the `sample.yaml` schema and placement are valid.
+  correctly alongside all existing `native_sim`/`mps3` cases — the
+  `sample.yaml` schema and placement are valid.
 - Verified: `twister -T . -s ble_audio.hil_boot -p
-  ble_audio_board/nrf5340/cpuapp --build-only` builds the **real
-  production firmware** for the real board successfully, with the
-  `extra_configs` actually applied — confirmed by grepping the generated
-  `.config` for `CONFIG_UART_CONSOLE=y`, `CONFIG_LOG_BACKEND_UART=y`, and
-  `# CONFIG_LOG_BACKEND_RTT is not set`.
+  nrf5340dk/nrf5340/cpuapp --build-only` builds the **real production
+  firmware** for the real board successfully, with the `extra_configs`
+  actually applied — confirmed by grepping the generated `.config` for
+  `CONFIG_UART_CONSOLE=y`, `CONFIG_LOG_BACKEND_UART=y`, and `#
+  CONFIG_LOG_BACKEND_RTT is not set`. Re-run against `nrf5340dk` after
+  the board swap, not just relabeled from the old result.
 - Verified: the regular `make test` run is unaffected by the new
   root-level `sample.yaml` — it still finds exactly the same 3 test
   scenarios / 6 configurations under `-T tests` as before this phase, so
@@ -495,6 +513,67 @@ as Priority 4's HIL section:**
   self-hosted runners already have an NCS toolchain pre-installed,
   switching both to `self-hosted` and dropping the `nrfutil` install
   step would likely be both simpler and faster.
+
+## Board swap: nRF5340 Audio DK → nRF5340 DK
+
+Real hardware turned out to be the plain nRF5340 DK, not the Audio DK
+this project originally targeted. Changes made across all five
+priorities:
+
+- **Board target:** `BOARD` in `tools/make/config.mk` changed from the
+  custom `ble_audio_board/nrf5340/cpuapp` (a `zephyr_boards`-repo copy of
+  Nordic's Audio DK board definition) to the standard, upstream
+  `nrf5340dk/nrf5340/cpuapp` — no custom board needed at all now.
+  Verified: `west build` succeeds for the real production app with no
+  `--board-root`/`BOARD_ROOT` needed. `zephyr_boards`
+  (`vx_zephyr_boards@ble_audio_board`) is still pulled by `west.yml` but
+  is no longer referenced anywhere in this repo's build path - left in
+  place pending a decision on whether to drop it (see root
+  `README.md`'s Status section).
+- **`audio_handler` (I2S output) disabled:** the nRF5340 DK has no I2S
+  codec chip wired up - its `i2s0` devicetree node exists (SoC-level)
+  but is left `status = "disabled"`, with no board overlay enabling it.
+  Confirmed via a real build failure before commenting anything out:
+  compiling `audio_handler.c` against `nrf5340dk` fails at
+  `DEVICE_DT_GET(DT_NODELABEL(i2s0))` (`__device_dts_ord_... undeclared`
+  - the same class of error `native_sim/native/64` hit for
+  `gpio_handlers`'s missing overlay, above). Fixed by commenting out (not
+  deleting) `audio_handler`'s inclusion in
+  `src/middlewares/CMakeLists.txt` and its call sites in
+  `app_streamctrl.c` (`audio_handler_init()`, `audio_handler_write()`) -
+  `codec_handler_decode()` still runs, so the BLE receive → LC3 decode
+  pipeline is still fully exercised; only the final I2S write is
+  disabled.
+- **`tests/app_streamctrl/` updated to match:** the FFF fakes/assertions
+  for `audio_handler_init`/`audio_handler_write` are commented out too,
+  not left asserting behavior that no longer happens.
+  `test_stream_recv_decodes_and_writes_audio` was renamed to
+  `test_stream_recv_decodes_frame` (it no longer writes audio) with the
+  write-specific assertions commented out.
+  `test_stream_recv_skips_audio_write_on_decode_error` is commented out
+  entirely - with `audio_handler_write()` never called regardless of
+  decode outcome, that test no longer distinguishes anything, so it
+  would just be a check that trivially always passes (the same
+  redundancy standard applied earlier in Priority 3). The `ztress`
+  test's final assertion was switched from
+  `audio_handler_write_fake.call_count` (now always 0) to
+  `codec_handler_decode_fake.call_count` (still active) as the "real
+  work happened under load" signal. Verified: `make test` passes clean
+  after all of this (6/6 executed configurations, 0 failed).
+- **4 LEDs / 4 buttons available, not yet used:** the nRF5340 DK exposes
+  `led0`-`led3` and `sw0`-`sw3` (`button0`-`button3`) as standard
+  aliases - confirmed by reading
+  `zephyr/boards/nordic/nrf5340dk/nrf5340_cpuapp_common.dtsi` directly.
+  `led_handler.c`/`button_handler.c` already used `DT_ALIAS(led0)`/
+  `DT_ALIAS(sw0)` (standard names, not board-specific ones), so both
+  needed zero changes to keep working on the new board. The app still
+  only drives one LED (connection status) and one button (generic press
+  callback) - the other 3 of each are physically available but nothing
+  in this codebase uses them yet.
+- **HIL test (`sample.yaml`, `tools/hardware-map.example.yml`,
+  `pytest/test_boot.py`) retargeted and re-verified**, not just
+  relabeled - see the board note under Priority 4 above for what was
+  re-run.
 
 ## Reference material used
 

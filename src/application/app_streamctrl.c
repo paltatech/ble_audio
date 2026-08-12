@@ -4,7 +4,14 @@
 #include "audio_defs.h"
 #include "led_handler.h"
 #include "button_handler.h"
-#include "audio_handler.h"
+/* audio_handler wraps I2S output to an external codec chip, which the
+ * nrf5340dk (unlike the nRF5340 Audio DK this project originally
+ * targeted) doesn't have wired up - its i2s0 devicetree node exists but
+ * is left status = "disabled" with no board-level overlay enabling it.
+ * Commented out, not removed, for whenever real audio hardware is
+ * available again.
+ */
+/* #include "audio_handler.h" */
 #include "codec_handler.h"
 #include "ble_audio_handler.h"
 
@@ -39,7 +46,6 @@ static void on_stream_configured(const struct ble_audio_handler_stream_info *inf
 static void on_stream_recv(const uint8_t *data, size_t len)
 {
 	int num_samples;
-	int err;
 
 	num_samples = codec_handler_decode(data, len, pcm_buf);
 	if (num_samples < 0) {
@@ -47,10 +53,15 @@ static void on_stream_recv(const uint8_t *data, size_t len)
 		return;
 	}
 
-	err = audio_handler_write(pcm_buf, (size_t)num_samples);
-	if (err != 0) {
-		LOG_WRN("Audio write failed: %d", err);
-	}
+	/* No audio_handler on this board - see the include comment above.
+	 * Decoded PCM is produced but not written out anywhere yet.
+	 */
+	/*
+	 * err = audio_handler_write(pcm_buf, (size_t)num_samples);
+	 * if (err != 0) {
+	 *	LOG_WRN("Audio write failed: %d", err);
+	 * }
+	 */
 }
 
 static void on_stream_stopped(void)
@@ -88,11 +99,13 @@ int app_streamctrl_start(void)
 		return err;
 	}
 
-	err = audio_handler_init();
-	if (err != 0) {
-		LOG_ERR("Failed to init audio handler: %d", err);
-		return err;
-	}
+	/*
+	 * err = audio_handler_init();
+	 * if (err != 0) {
+	 *	LOG_ERR("Failed to init audio handler: %d", err);
+	 *	return err;
+	 * }
+	 */
 
 	err = ble_audio_handler_start(&ble_audio_cb);
 	if (err != 0) {

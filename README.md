@@ -1,20 +1,28 @@
 # BLE Audio
 
-BLE Audio firmware project. This is a baseline scaffold — application code
-has not been added yet (see [CHANGELOG](CHANGELOG)).
+An LE Audio unicast server (headset) firmware project, with a working
+example of the Zephyr testing ecosystem progression built alongside it -
+see [docs/testing_ecosystem.md](docs/testing_ecosystem.md).
 
 ## Status
 
-Target board is `ble_audio_board` (nRF5340, based on the nRF5340 Audio DK —
-see `zephyr_boards`' `ble_audio_board` branch), built with NCS v2.7.0. This
-is Nordic's real LE Audio-capable part; a real LE Audio stack (LC3 codec,
-ISO channels) needs far more RAM/compute than a single-core nRF52 chip
-provides.
+Target board is `nrf5340dk/nrf5340/cpuapp` - a standard, upstream-supported
+Zephyr board, no custom board definition needed. Real hardware is the plain
+nRF5340 DK, not the nRF5340 Audio DK this project originally targeted; the
+DK has no I2S codec chip wired up, so `audio_handler` (I2S output) is
+commented out in `app_streamctrl.c` and excluded from the build in
+`src/middlewares/CMakeLists.txt` until real audio hardware is available.
+The DK has 4 LEDs and 4 buttons (`led0`-`led3`, `sw0`-`sw3`); the app
+currently only uses one of each (`led0` for connection status, `sw0`/
+`button0` wired to a generic press callback).
 
 [west.yml](west.yml) pulls `nrf` (`vx_sdk_nrf@io_board`) and
-`zephyr_boards` (`vx_zephyr_boards@ble_audio_board`) from `paltatech`. Both
-pins should move back to `develop`/`manifest-rev` once those branches are
-merged.
+`zephyr_boards` (`vx_zephyr_boards@ble_audio_board`) from `paltatech`. The
+`nrf` pin should move back to `develop`/`manifest-rev` once that branch is
+merged; `zephyr_boards` is no longer needed for the primary build target
+now that it's the standard `nrf5340dk` (its `ble_audio_board` definition
+isn't referenced anywhere in this repo's build path anymore) - still
+pulled for now, pending a decision on whether to drop it.
 
 ## SDK Version
 
@@ -67,7 +75,7 @@ make build
 ```
 
 This builds the firmware for the configured board (default:
-`ble_audio_board/nrf5340/cpuapp`, set in `tools/make/config.mk`). The
+`nrf5340dk/nrf5340/cpuapp`, set in `tools/make/config.mk`). The
 network core's Bluetooth controller image is built automatically as a
 child image (`CONFIG_NCS_INCLUDE_RPMSG_CHILD_IMAGE`) - no `--sysbuild`
 needed for this NCS revision. Output is `zephyr/merged.hex`, combining
@@ -84,7 +92,7 @@ make clean
 Edit `tools/make/config.mk` to change the target board:
 
 ```makefile
-BOARD ?= ble_audio_board/nrf5340/cpuapp
+BOARD ?= nrf5340dk/nrf5340/cpuapp
 ```
 
 Or override on the command line:
@@ -134,7 +142,7 @@ make test-hil
 ```
 
 Flashes the real production image onto a physical
-`ble_audio_board/nrf5340/cpuapp` and checks its boot log (Bluetooth init,
+`nrf5340dk/nrf5340/cpuapp` and checks its boot log (Bluetooth init,
 advertising start) over UART. Not part of `make test` — needs real
 hardware and a filled-in `tools/hardware-map.yml` (copy
 `tools/hardware-map.example.yml` and fill in your board's J-Link serial),
@@ -203,7 +211,7 @@ make help
 
 Build artifacts are placed in:
 ```
-_build_ble_audio_ble_audio_board_nrf5340_cpuapp/
+_build_ble_audio_nrf5340dk_nrf5340_cpuapp/
 ```
 (`BOARD`'s slashes are replaced with underscores for the directory name.)
 

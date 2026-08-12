@@ -5,7 +5,11 @@
 #include <zephyr/ztress.h>
 
 #include "app_streamctrl.h"
-#include "audio_handler.h"
+/* audio_handler is disabled in app_streamctrl.c on this board (nrf5340dk
+ * has no I2S codec chip wired up) - fakes/assertions for it are commented
+ * out below to match, not deleted.
+ */
+/* #include "audio_handler.h" */
 #include "ble_audio_handler.h"
 #include "button_handler.h"
 #include "codec_handler.h"
@@ -18,8 +22,8 @@ FAKE_VALUE_FUNC(int, led_handler_set, bool);
 
 FAKE_VALUE_FUNC(int, button_handler_init, button_handler_pressed_cb_t);
 
-FAKE_VALUE_FUNC(int, audio_handler_init);
-FAKE_VALUE_FUNC(int, audio_handler_write, const int16_t *, size_t);
+/* FAKE_VALUE_FUNC(int, audio_handler_init); */
+/* FAKE_VALUE_FUNC(int, audio_handler_write, const int16_t *, size_t); */
 
 FAKE_VALUE_FUNC(int, codec_handler_configure, int, int);
 FAKE_VALUE_FUNC(int, codec_handler_decode, const uint8_t *, size_t, int16_t *);
@@ -55,8 +59,8 @@ static void app_streamctrl_test_before(void *fixture)
 	RESET_FAKE(led_handler_init);
 	RESET_FAKE(led_handler_set);
 	RESET_FAKE(button_handler_init);
-	RESET_FAKE(audio_handler_init);
-	RESET_FAKE(audio_handler_write);
+	/* RESET_FAKE(audio_handler_init); */
+	/* RESET_FAKE(audio_handler_write); */
 	RESET_FAKE(codec_handler_configure);
 	RESET_FAKE(codec_handler_decode);
 	RESET_FAKE(codec_handler_reset);
@@ -75,7 +79,10 @@ ZTEST(app_streamctrl, test_start_initializes_all_middlewares)
 
 	zassert_equal(led_handler_init_fake.call_count, 1);
 	zassert_equal(button_handler_init_fake.call_count, 1);
-	zassert_equal(audio_handler_init_fake.call_count, 1);
+	/* audio_handler_init() is commented out in app_streamctrl.c on this
+	 * board - see the include comment above.
+	 */
+	/* zassert_equal(audio_handler_init_fake.call_count, 1); */
 	zassert_equal(ble_audio_handler_start_fake.call_count, 1);
 	zassert_not_null(captured_cb, "app_streamctrl should register BLE audio callbacks");
 }
@@ -116,7 +123,7 @@ ZTEST(app_streamctrl, test_stream_configured_configures_codec)
 	zassert_equal(codec_handler_configure_fake.arg1_val, 10000);
 }
 
-ZTEST(app_streamctrl, test_stream_recv_decodes_and_writes_audio)
+ZTEST(app_streamctrl, test_stream_recv_decodes_frame)
 {
 	uint8_t frame[4] = {1, 2, 3, 4};
 
@@ -130,21 +137,35 @@ ZTEST(app_streamctrl, test_stream_recv_decodes_and_writes_audio)
 	zassert_equal_ptr(codec_handler_decode_fake.arg0_val, frame);
 	zassert_equal(codec_handler_decode_fake.arg1_val, sizeof(frame));
 
-	zassert_equal(audio_handler_write_fake.call_count, 1);
-	zassert_equal(audio_handler_write_fake.arg1_val, 480);
+	/* Used to also assert decoded PCM got forwarded to audio_handler_
+	 * write() here - that call is commented out in app_streamctrl.c on
+	 * this board (see the include comment above), so there's nothing
+	 * left to assert past decode.
+	 */
+	/* zassert_equal(audio_handler_write_fake.call_count, 1); */
+	/* zassert_equal(audio_handler_write_fake.arg1_val, 480); */
 }
 
-ZTEST(app_streamctrl, test_stream_recv_skips_audio_write_on_decode_error)
-{
-	codec_handler_decode_fake.return_val = -EINVAL;
-
-	zassert_ok(app_streamctrl_start());
-
-	captured_cb->stream_recv(NULL, 0);
-
-	zassert_equal(audio_handler_write_fake.call_count, 0,
-		      "should not write audio when decode fails");
-}
+/* This suite used to also have test_stream_recv_skips_audio_write_on_
+ * decode_error, checking audio_handler_write_fake.call_count stayed 0
+ * when decode failed. With audio_handler_write() commented out entirely
+ * in app_streamctrl.c, that count is 0 unconditionally now - the test
+ * would no longer distinguish anything, so it's commented out here too
+ * rather than kept as a check that always trivially passes.
+ */
+/*
+ * ZTEST(app_streamctrl, test_stream_recv_skips_audio_write_on_decode_error)
+ * {
+ *	codec_handler_decode_fake.return_val = -EINVAL;
+ *
+ *	zassert_ok(app_streamctrl_start());
+ *
+ *	captured_cb->stream_recv(NULL, 0);
+ *
+ *	zassert_equal(audio_handler_write_fake.call_count, 0,
+ *		      "should not write audio when decode fails");
+ * }
+ */
 
 ZTEST(app_streamctrl, test_stream_stopped_resets_codec)
 {
@@ -206,8 +227,12 @@ ZTEST(app_streamctrl, test_stream_recv_survives_concurrent_button_presses)
 	 */
 	zassert_true(ztress_exec_count(0) > 0, "stream_recv thread never ran");
 	zassert_true(ztress_exec_count(1) > 0, "button thread never ran");
-	zassert_true(audio_handler_write_fake.call_count > 0,
-		     "expected at least some decoded audio to be written");
+	/* audio_handler_write() is commented out in app_streamctrl.c on this
+	 * board - codec_handler_decode() is the last active step in the
+	 * stream_recv path, so that's the "real work happened" signal now.
+	 */
+	zassert_true(codec_handler_decode_fake.call_count > 0,
+		     "expected stream_recv to have decoded at least one frame");
 }
 
 ZTEST_SUITE(app_streamctrl, NULL, NULL, app_streamctrl_test_before, NULL, NULL);

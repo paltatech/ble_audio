@@ -1,8 +1,8 @@
 # NOTE: written against the real twister_harness DeviceAdapter API
 # (readlines_until) and this project's actual log strings, but not
-# verified against real hardware - no nRF5340 Audio DK was available in
-# the environment this was written in. Verify against real hardware
-# before trusting it; see docs/testing_ecosystem.md.
+# verified against real hardware - no nRF5340 DK was available in the
+# environment this was written in. Verify against real hardware before
+# trusting it; see docs/testing_ecosystem.md.
 
 import logging
 

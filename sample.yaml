@@ -1,15 +1,15 @@
 sample:
   name: BLE Audio headset boot (HIL)
   description: >
-    Flashes the real ble_audio_board image onto physical hardware and
-    checks its actual boot log (Bluetooth init, advertising start) over
-    UART. Not run by `make test` - needs real hardware and a filled-in
+    Flashes the real image onto a physical nRF5340 DK and checks its
+    actual boot log (Bluetooth init, advertising start) over UART. Not
+    run by `make test` - needs real hardware and a filled-in
     tools/hardware-map.yml (see tools/hardware-map.example.yml). Run via
     `make test-hil`.
 tests:
   ble_audio.hil_boot:
     harness: pytest
-    platform_allow: ble_audio_board/nrf5340/cpuapp
+    platform_allow: nrf5340dk/nrf5340/cpuapp
     extra_configs:
       # Production prj.conf logs over RTT only (CONFIG_UART_CONSOLE=n).
       # Twister's hardware harness reads a UART device, so route console

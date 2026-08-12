@@ -151,8 +151,7 @@ test-hil:
 	python3 $(ZEPHYR_BASE)/scripts/twister \
 		-T . \
 		-s ble_audio.hil_boot \
-		-p ble_audio_board/nrf5340/cpuapp \
-		--board-root $(ZEPHYR_BOARD_ROOT)/boards \
+		-p nrf5340dk/nrf5340/cpuapp \
 		--device-testing \
 		--hardware-map $(HW_MAP) \
 		--extra-args NCS_TOOLCHAIN_VERSION=NONE \
@@ -164,8 +163,8 @@ test-hil:
 # J-Link serial number (override with JLINK_SERIAL=xxx)
 JLINK_SERIAL ?=
 
-# nRF5340 app core (see boards/paltatech/ble_audio_board/board.cmake in
-# zephyr_boards for the matching jlink runner args)
+# nRF5340 app core (matches nrf5340dk's own board.cmake jlink runner args
+# upstream - standard board, no custom board.cmake needed anymore)
 JLINK_DEVICE ?= nrf5340_xxaa_app
 
 ifdef JLINK_SERIAL
