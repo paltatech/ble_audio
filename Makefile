@@ -1,4 +1,4 @@
-.PHONY: all build clean flash start-gdb-server debug west-update help print-build-path print-project-name print-board-name lint lint-ci lint-cmake test test-clean
+.PHONY: all build clean flash start-gdb-server debug west-update help print-build-path print-project-name print-board-name lint lint-ci lint-cmake test test-clean test-hil
 
 all: west-update
 
@@ -35,6 +35,9 @@ help:
 	@echo "Test targets:"
 	@echo "  make test                      - Run tests/ under Twister ($(TEST_PLATFORMS))"
 	@echo "  make test-clean                - Remove Twister output"
+	@echo "  make test-hil                  - Run the HIL boot test on real hardware"
+	@echo "                                    (needs tools/hardware-map.yml, see"
+	@echo "                                    tools/hardware-map.example.yml)"
 	@echo ""
 	@echo "Utility targets:"
 	@echo "  make west-update               - Update west manifest and dependencies"
@@ -122,6 +125,34 @@ test:
 
 test-clean:
 	rm -rf $(TWISTER_OUT)
+
+# ============================================================================
+# HIL test target (Priority 4 - needs real hardware, not run by `make test`)
+# ============================================================================
+# Copy tools/hardware-map.example.yml to tools/hardware-map.yml, fill in
+# your board's J-Link serial/UART path, then run `make test-hil`. Also
+# needs the pytest_twister_harness plugin installed once:
+#   pip install zephyr/scripts/pylib/pytest-twister-harness
+HW_MAP ?= tools/hardware-map.yml
+
+test-hil:
+	@if [ ! -f "$(HW_MAP)" ]; then \
+		echo "No hardware map at $(HW_MAP)."; \
+		echo "Copy tools/hardware-map.example.yml there and fill in your board's id/serial."; \
+		exit 1; \
+	fi
+	@mkdir -p $(LIBFFI_SHIM_DIR)
+	@[ -f $(LIBFFI_SHIM_DIR)/libffi.so.7 ] || cp $(LIBFFI_SRC) $(LIBFFI_SHIM_DIR)/
+	LD_LIBRARY_PATH="$(LIBFFI_SHIM_DIR):$$LD_LIBRARY_PATH" \
+	python3 $(ZEPHYR_BASE)/scripts/twister \
+		-T . \
+		-s ble_audio.hil_boot \
+		-p ble_audio_board/nrf5340/cpuapp \
+		--board-root $(ZEPHYR_BOARD_ROOT)/boards \
+		--device-testing \
+		--hardware-map $(HW_MAP) \
+		--extra-args NCS_TOOLCHAIN_VERSION=NONE \
+		-O $(TWISTER_OUT)
 
 # ============================================================================
 # Flash targets

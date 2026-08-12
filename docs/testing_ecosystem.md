@@ -26,8 +26,8 @@ durable, in-repo record — the plan file is not.
 | 1 | Unit tests & `native_sim` | ✅ Done — `tests/codec_handler/` |
 | 2 | Twister, 32/64-bit targets | ✅ Done — `make test` |
 | 3 | FFF mocking, devicetree fakes, parameterized tests | ✅ Done — `tests/app_streamctrl/`, `tests/gpio_handlers/` |
-| 4 | HIL, pytest/Robot | 🔜 Next |
-| 5 | CI/CD, `ztress`, shuffle | Pending |
+| 4 | HIL, pytest/Robot | ✅ Done — `make test-hil` (schema/build verified; on-device run needs real hardware) |
+| 5 | CI/CD, `ztress`, shuffle | 🔜 Next |
 
 ## Priority 1: Unit Tests & Native Simulation — done
 
@@ -201,12 +201,100 @@ LC3 memory buffer `static`. Fixed by making the parameterized test's
 buffers `static` too, matching that established convention instead of
 reintroducing the pattern that caused Priority 2's stack overflow.
 
-## Priority 4: HIL & Multi-Harness Integration — next
+## Priority 4: HIL & Multi-Harness Integration — done
 
-Plan: once real nRF5340 Audio DK hardware is available, a Twister
-hardware-map entry (J-Link/UART) for on-target runs, plus a `pytest`
-harness that flashes the headset image, drives a second device as the
-LE Audio unicast client, and asserts the stream actually starts.
+**What was built:** `make test-hil` — a separate Twister invocation, not
+part of `make test`, that flashes the *real production image* (this
+project's own `CMakeLists.txt`/`src/`/`prj.conf`, not a stub under
+`tests/`) onto a physical nRF5340 Audio DK and checks its actual boot log
+over UART via a `pytest` harness. Pieces:
+
+- `sample.yaml` (project root, not under `tests/`) — defines
+  `ble_audio.hil_boot`, `harness: pytest`, `platform_allow:
+  ble_audio_board/nrf5340/cpuapp`.
+- `pytest/test_boot.py` — two cases against the real
+  `twister_harness.DeviceAdapter` API: wait for `"Bluetooth initialized"`,
+  then `"Advertising started"`, via `dut.readlines_until(regex=...,
+  timeout=...)`.
+- `tools/hardware-map.example.yml` — schema-correct template (J-Link
+  `nrfjprog` runner, `serial`/`baud`) per
+  `zephyr/scripts/schemas/twister/hwmap-schema.yaml`. Copy to
+  `tools/hardware-map.yml` (gitignored — machine-specific) and fill in a
+  real J-Link serial to use it.
+- `Makefile`'s `test-hil` target: refuses to run without
+  `tools/hardware-map.yml` present, otherwise wraps the same
+  `libffi`/`NCS_TOOLCHAIN_VERSION=NONE` workarounds as `make test`.
+
+**Placement follows a real sibling precedent, not a guess:** `blg_beacon`
+puts its own HIL `sample.yaml` at the project root and reuses the real
+app sources, rather than duplicating the app under `tests/`. Copied that
+structure here for the same reason it exists there — a HIL test that
+exercises a rebuilt/rewritten copy of the app isn't actually testing what
+ships.
+
+**A real integration bug found and fixed before ever touching
+hardware:** the shipped `prj.conf` logs over RTT only
+(`CONFIG_UART_CONSOLE` unset, no `CONFIG_LOG_BACKEND_UART`) — confirmed
+via `grep` on `src/middlewares/ble_audio_handler/ble_audio_handler.c`'s
+own `LOG_INF` calls. Twister's hardware pytest harness reads a UART
+device, not RTT, so as written the harness would attach to a port that
+never receives the log lines it's waiting for and time out — a bug that
+would only have surfaced during an actual on-device run, potentially
+burning a debugging session on hardware nobody had access to yet.
+Fixed by adding `extra_configs` (`CONFIG_LOG_BACKEND_UART=y`,
+`CONFIG_LOG_BACKEND_RTT=n`, `CONFIG_UART_CONSOLE=y`) scoped to just this
+`sample.yaml` entry — modeled on
+`zephyr/samples/subsys/testsuite/pytest/shell/testcase.yaml`'s use of the
+same mechanism — so the HIL test build's console differs from the
+shipped image's, without touching the product's own `prj.conf`.
+
+**A Twister CLI quirk, found by reading `testplan.py` rather than
+guessing:** `--board-root` on the `twister` CLI needs the trailing
+`/boards` segment (e.g. `$ZEPHYR_BOARD_ROOT/boards`), unlike CMake's
+`BOARD_ROOT`, which does not. Twister's own board-scanning code computes
+`board_roots = [Path(os.path.dirname(root)) for root in
+self.env.board_roots]` with an explicit comment that "internally in
+twister a board root includes the `boards` folder but in Zephyr build
+system, the board root is without the `boards`". Without the suffix,
+Twister reports `ble_audio_board/nrf5340/cpuapp` as an "unrecognized
+platform" even though the identical path works fine for `west build
+-DBOARD_ROOT=...`. `test-hil`'s `Makefile` target passes the correct
+form.
+
+**What was actually verified, and what wasn't — stated plainly because
+no nRF5340 Audio DK was available in this environment:**
+
+- Verified: `twister -T . --list-tests` discovers `ble_audio.hil_boot`
+  correctly alongside all 17 existing `native_sim`/`mps3` cases (18
+  total) — the `sample.yaml` schema and placement are valid.
+- Verified: `twister -T . -s ble_audio.hil_boot -p
+  ble_audio_board/nrf5340/cpuapp --build-only` builds the **real
+  production firmware** for the real board successfully, with the
+  `extra_configs` actually applied — confirmed by grepping the generated
+  `.config` for `CONFIG_UART_CONSOLE=y`, `CONFIG_LOG_BACKEND_UART=y`, and
+  `# CONFIG_LOG_BACKEND_RTT is not set`.
+- Verified: the regular `make test` run is unaffected by the new
+  root-level `sample.yaml` — it still finds exactly the same 3 test
+  scenarios / 6 configurations under `-T tests` as before this phase, so
+  the HIL sample isn't accidentally being picked up by CI-facing runs.
+- **Not verified:** actually flashing a device, reading real UART output,
+  or the `pytest` cases passing against live hardware. `test_boot.py` is
+  written against the real `twister_harness` API and this project's real
+  log strings, but that's as far as it can be checked without a DK. The
+  `twister_harness` pip package (`zephyr/scripts/pylib/pytest-
+  twister-harness`) is also not installed in this environment — noted as
+  a prerequisite in the `Makefile` and README, not silently assumed.
+
+**Scope decision:** the original plan mentioned driving a second device
+as the LE Audio unicast client to prove a stream actually starts
+end-to-end. That's deliberately deferred, not forgotten — this app is
+sink-only (unicast server/headset), and standing up a second client
+image is a separate build target and test topology, not a small addition
+to this phase. `ble_audio.hil_boot` proves the one thing that's
+meaningful without a second device: the real image boots and its BLE
+stack comes up on real silicon. The two-device stream test is a
+candidate for a later phase once single-device HIL is confirmed working
+against real hardware.
 
 ## Priority 5: Regression, `ztress`, Shuffle — pending
 
@@ -239,3 +327,17 @@ baseline expectation for every suite added from here on, not a one-off);
   `zephyr/include/zephyr/drivers/gpio/gpio_emul.h` — native_sim's
   built-in `zephyr,gpio-emul` controller and its `gpio_emul_input_set()`/
   `gpio_emul_output_get()` API; used directly by `tests/gpio_handlers/`.
+- `blg_beacon`'s root-level `sample.yaml` — precedent for placing a HIL
+  test's `sample.yaml` at the project root and reusing the real app
+  sources, instead of duplicating the app under `tests/`; template for
+  this project's own `sample.yaml`.
+- `zephyr/samples/subsys/testsuite/pytest/shell/testcase.yaml` — real
+  in-tree use of `extra_configs` to change a test build's console/log
+  backend without touching the product's own `prj.conf`; template for
+  the RTT→UART override here.
+- `zephyr/scripts/schemas/twister/hwmap-schema.yaml` and
+  `zephyr/scripts/pylib/pytest-twister-harness` — hardware-map field
+  schema and the `twister_harness.DeviceAdapter` API used by
+  `tools/hardware-map.example.yml` and `pytest/test_boot.py`.
+- `zephyr/scripts/pylib/twister/twisterlib/testplan.py` — source of the
+  `--board-root` trailing-`/boards` requirement (see above).
