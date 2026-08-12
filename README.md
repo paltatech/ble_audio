@@ -142,6 +142,26 @@ plus the `twister_harness` plugin from Prerequisites above. See
 [docs/testing_ecosystem.md](docs/testing_ecosystem.md) for what's
 verified vs. not without hardware in hand.
 
+## Continuous Integration
+
+Five workflows under `.github/workflows/`, one per concern:
+
+- `gitlint.yml` — commit message format (`tools/gitlint/`, `.gitlint`)
+- `clang-format.yml` — C/C++ formatting (`make lint-ci`)
+- `cmake-format.yml` — CMake formatting (`make lint-cmake`)
+- `test.yml` — `make test` (Twister across `native_sim`/`mps3/an547`)
+- `compile.yml` — builds the real production firmware
+  (`./prepare_release.sh`), fails on any compiler warning, uploads the
+  result as a downloadable Actions artifact
+
+`test.yml` and `compile.yml` need a `MY_GITHUB_TOKEN` secret with read
+access to `paltatech/vx_sdk_nrf` and `paltatech/vx_zephyr_boards` (same
+convention every sibling paltatech firmware repo's CI uses) — see
+[docs/testing_ecosystem.md](docs/testing_ecosystem.md) for what's
+verified about these workflows vs. not (none have been run for real; no
+way to trigger a GitHub Actions run from the environment they were
+written in).
+
 ## Debug Commands
 
 ### Start GDB Server

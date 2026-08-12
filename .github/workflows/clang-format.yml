@@ -1,0 +1,57 @@
+name: clang-format
+
+on:
+  pull_request:
+  push:
+    branches:
+      - develop
+
+  workflow_dispatch:
+
+jobs:
+  lint-project:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # coding-style.md pins clang-format 15.0.7 - not all versions
+      # produce the same output. Ubuntu's clang-format-15 package matches
+      # that major/minor; symlinked to ./clang-format so `make lint-ci`
+      # (which expects a local binary, same contract sibling projects use
+      # for their own pinned copy) doesn't need changes.
+      - name: install clang-format-15
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-format-15
+          ln -s "$(command -v clang-format-15)" ./clang-format
+          ./clang-format --version
+
+      - env:
+          pass: \033[32;1mPASSED -
+          info: \033[33;1mINFO -
+          fail: \033[31;1mFAILED -
+          end: \033[0m
+          stepName: apply linter
+        name: ${{ env.stepName }}
+        shell: bash
+        run: |
+          make lint-ci
+
+          set +e
+          git diff --exit-code >> diffChanges.patch
+          exitCode=$?
+          set -e
+
+          if [ $exitCode -eq 0 ]; then
+              echo -e "${{ env.pass }} ${{ env.stepName }} ${{ env.end }}"
+          else
+              echo -e "${{ env.info }} Format Difference ${{ env.end }}"
+              git diff --color=always
+              echo -e "${{ env.fail }} List of files with formatting errors: ${{ env.end }}"
+              echo -e "${{ env.fail }} "$(git diff --name-only)" ${{ env.end }} "
+              echo -e "${{ env.fail }} ${{ env.stepName }} ${{ env.end }}"
+          fi
+          exit $exitCode

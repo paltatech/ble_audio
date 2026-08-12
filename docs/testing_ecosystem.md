@@ -27,7 +27,7 @@ durable, in-repo record — the plan file is not.
 | 2 | Twister, 32/64-bit targets | ✅ Done — `make test` |
 | 3 | FFF mocking, devicetree fakes, parameterized tests | ✅ Done — `tests/app_streamctrl/`, `tests/gpio_handlers/` |
 | 4 | HIL, pytest/Robot | ✅ Done — `make test-hil` (schema/build verified; on-device run needs real hardware) |
-| 5 | CI/CD, `ztress`, shuffle | 🔜 Next |
+| 5 | CI/CD, `ztress`, shuffle | ✅ Done — shuffle + `ztress` verified locally; CI workflows syntax-checked, not run for real |
 
 ## Priority 1: Unit Tests & Native Simulation — done
 
@@ -296,15 +296,136 @@ stack comes up on real silicon. The two-device stream test is a
 candidate for a later phase once single-device HIL is confirmed working
 against real hardware.
 
-## Priority 5: Regression, `ztress`, Shuffle — pending
+## Priority 5: Regression, `ztress`, Shuffle — done
 
-Plan: a CI workflow running `west twister`, `make lint`, `make
-lint-cmake`, and gitlint on every push (the tool configs already exist
-under `tools/`, just need wiring into a workflow file);
-`CONFIG_ZTEST_SHUFFLE` added to every suite (the codec_handler suite is
-already shuffle-safe, see above — that fix should be treated as the
-baseline expectation for every suite added from here on, not a one-off);
-`ztress` once the core logic is stable enough to stress meaningfully.
+**What was built:** four pieces, split across what could be fully
+verified in this environment and what genuinely couldn't.
+
+**`CONFIG_ZTEST_SHUFFLE=y`** added to all three suites' `prj.conf`
+(`codec_handler`, `app_streamctrl`, `gpio_handlers`). With the Kconfig
+defaults (`ZTEST_SHUFFLE_SUITE_REPEAT_COUNT=3`,
+`ZTEST_SHUFFLE_TEST_REPEAT_COUNT=3`), every suite now runs 3x with
+shuffled order each time - a suite whose state leaks between tests or
+depends on execution order fails here even if a single fixed-order run
+passes. **Verified:** `make test` still passes clean (24 test cases,
+4/4 executed configurations) - confirmed via the handler log that the
+new ztress test case (below) actually executed 9 times (3 suite repeats
+× 3 test repeats), not just once. This is the direct payoff of the
+per-test `before`-hook resets fixed back in Priority 1/3 (`codec_handler`
+release-on-reconfigure, `led_handler`/`button_handler_init()`
+moved to suite-level `setup`) - those fixes are exactly what makes
+shuffle safe to turn on now instead of exposing new failures.
+
+**A `ztress` test added to `tests/app_streamctrl/`**
+(`test_stream_recv_survives_concurrent_button_presses`). Two `ZTRESS_THREAD`
+contexts run at once: one repeatedly drives `stream_recv` (the BT ISO RX
+path), the other repeatedly drives a button press (the GPIO IRQ/workqueue
+path). This pairing was chosen deliberately, not the first thing that
+compiled: two *concurrent* `stream_recv` calls can't happen on real
+hardware (there's exactly one RX path), so stressing that would only
+prove a violation of a contract nothing ever exercises. Audio RX and a
+button press, on the other hand, genuinely are two independent contexts
+that can interleave on real hardware - a realistic scenario worth
+covering. Followed upstream `tests/ztest/ztress`'s own idiom of
+range/existence assertions (`ztress_exec_count(n) > 0`) rather than exact
+call-count equality, since exact counts aren't meaningful under ztress's
+timing jitter - asserting equality here would make the test itself
+flaky, not app_streamctrl.
+
+**Real gap found while wiring this up (not a bug in ble_audio's own
+code, but a real gap in its CI-readiness):** the project had no root
+`.gitlint` file. `tools/gitlint/gitlint-rules.py` (the custom
+uppercase-type rule already followed in every commit this session) was
+present, but nothing wired it in - every sibling project
+(`blg_beacon`, `vx_ioboard_fw`, and the canonical
+`paltatech/paltatech-guidelines-docs`) has a root `.gitlint` pointing
+`extra-path` at that file. Without it, a `gitlint` CI job would validate
+commits against gitlint's bare defaults and silently not enforce the
+`TYPE(scope): outline` convention this whole session has followed.
+Fixed by adding `.gitlint`, diffed byte-for-byte identical against
+`paltatech/paltatech-guidelines-docs`'s copy to confirm it's not a
+guess.
+
+**Five CI workflows added under `.github/workflows/`**, one per
+concern, matching how `paltatech/paltatech-guidelines-docs`'s own
+`workflow-templates/` and every sibling project split things up (rather
+than one monolithic workflow):
+
+- `gitlint.yml` - copied verbatim from
+  `paltatech/paltatech-guidelines-docs`'s `workflow-templates/gitlint.yml`.
+  Public `jorisroovers/gitlint` Docker image, no secrets needed.
+- `clang-format.yml` - installs Ubuntu's `clang-format-15` package (no
+  private release repo dependency) and symlinks it to `./clang-format`
+  so `make lint-ci` (which expects a local binary - the same contract
+  sibling projects use for their own pinned copy) doesn't need
+  changing. Version choice isn't arbitrary:
+  `paltatech-guidelines-docs/src/coding-style.md` explicitly pins clang-format
+  `15.0.7` ("not all clang-format versions produces the same result"),
+  and Ubuntu's `clang-format-15` package matches that major/minor -
+  confirmed locally (`clang-format --version` → `15.0.7` exactly).
+- `cmake-format.yml` - `pip install cmakelang` then `make lint-cmake`,
+  reusing the project's own existing target rather than a third-party
+  Action.
+- `test.yml` - the actual Priority 5 deliverable: installs
+  `qemu-system-arm` and an NCS toolchain via `nrfutil` (the same
+  mechanism every sibling Viaanix-era workflow already uses, and it's a
+  public Nordic tool with no paltatech/Viaanix branding involved), sets
+  up a fresh west workspace, and runs `make test`.
+- `compile.yml` - builds the real production firmware on every push,
+  reusing `test.yml`'s toolchain/west scaffolding but running
+  `./prepare_release.sh` instead. Two decisions here were the user's
+  call, not guessed: fails the job on **any** compiler warning
+  (`vx_ioboard_fw`'s stricter behavior, not `blg_beacon`'s
+  log-only-don't-fail one), and uses `ubuntu-latest` + `nrfutil` rather
+  than `self-hosted` (matching `test.yml`, for the same
+  can't-confirm-a-runner-is-provisioned reason). Deliberately skips the
+  private `Viaanix/gcc-problem-matcher` dependency both sibling
+  `compile.yml`s use for inline PR annotations - warnings still fail the
+  job and show in the raw log, just without the annotation nicety.
+  Uploads the built firmware (`release/*` from `prepare_release.sh`) as
+  a downloadable Actions artifact, which neither sibling workflow does -
+  a "compile" job that doesn't leave a moved firmware image behind
+  doesn't produce anything worth keeping.
+
+**What was actually verified, and what wasn't - same honesty standard
+as Priority 4's HIL section:**
+
+- Verified: `make test` passes with `CONFIG_ZTEST_SHUFFLE` enabled and
+  the new ztress test in place (24 test cases, 4/4 configurations, 0
+  failed) - re-ran from a clean `twister-out`/`.cache` to rule out stale
+  state.
+- Verified: the ztress test's two contexts both actually ran under load
+  (`ztress_exec_count(0)`/`(1)` both `> 0`, `audio_handler_write`
+  actually got called), across all 9 shuffled repeats, not just once.
+- Verified: `make lint-ci` (with a locally-installed `clang-format-15`
+  symlinked to `./clang-format`, matching what `clang-format.yml` does
+  in CI) reformats only files legitimately touched this phase and
+  leaves everything else untouched - the CI job's "fail on any diff"
+  logic would have passed on this repo's current state.
+- Verified: `make lint-cmake` produces no diff on this repo's current
+  state - the `cmake-format.yml` job's logic would pass too.
+- Verified: all five workflow YAML files parse as valid YAML.
+- **Not verified:** an actual GitHub Actions run of any of the five
+  workflows. There's no way to trigger real Actions runs from this
+  environment. Both `test.yml` and `compile.yml`'s "Init west workspace"
+  steps assume a `MY_GITHUB_TOKEN` secret exists with read access to
+  `paltatech/vx_sdk_nrf` and `paltatech/vx_zephyr_boards` - the same
+  secret name every sibling Viaanix-era workflow uses for the same
+  purpose, so it's a reasoned choice, not a random guess, but it's
+  genuinely unconfirmed whether that secret is configured for the
+  `ble_audio` repo specifically. If it isn't, `west update` will fail at
+  the private-repo clone step in both workflows. Whoever adds this repo
+  to GitHub Actions should confirm that secret (or an equivalent) is set
+  before relying on either of them.
+- **Scope decision:** `paltatech-guidelines-docs/workflow-templates/compile.yml`
+  and its siblings' equivalents use `runs-on: self-hosted` with a
+  pre-provisioned image containing the toolchain. `test.yml` and
+  `compile.yml` here use `ubuntu-latest` with `nrfutil` instead
+  (confirmed with the user), since self-hosted runner availability for
+  this specific repo couldn't be confirmed either. If paltatech's
+  self-hosted runners already have an NCS toolchain pre-installed,
+  switching both to `self-hosted` and dropping the `nrfutil` install
+  step would likely be both simpler and faster.
 
 ## Reference material used
 
@@ -341,3 +462,15 @@ baseline expectation for every suite added from here on, not a one-off);
   `tools/hardware-map.example.yml` and `pytest/test_boot.py`.
 - `zephyr/scripts/pylib/twister/twisterlib/testplan.py` — source of the
   `--board-root` trailing-`/boards` requirement (see above).
+- `zephyr/tests/ztest/ztress/src/main.c` — real in-tree `ztress` usage;
+  template for `test_stream_recv_survives_concurrent_button_presses`'s
+  `ZTRESS_THREAD`/`ZTRESS_EXECUTE` calls and its range-based
+  (`ztress_exec_count(n) > 0`, not exact-equality) assertion style.
+- `paltatech/paltatech-guidelines-docs` (`workflow-templates/`,
+  `src/coding-style.md`, `.gitlint`) — authoritative source for the CI
+  workflow structure (one workflow per concern), the clang-format 15.0.7
+  version pin, and the gitlint config; cross-checked against sibling
+  projects (`blg_beacon`, `vx_ioboard_fw`) for the parts the guidelines
+  repo doesn't cover (there's no west/NCS/twister CI template upstream -
+  `test.yml` here is new ground, modeled on the sibling Viaanix-era
+  `compile.yml`'s `nrfutil`/`west init` mechanics instead).

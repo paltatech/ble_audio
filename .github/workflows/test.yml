@@ -1,0 +1,79 @@
+name: test
+
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches:
+      - develop
+
+env:
+  PROJECTS_PATH: zephyr-workspace/projects
+  FIRMWARE_PATH: zephyr-workspace/projects/ble_audio
+  NCS_VERSION: v2.7.0
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: ${{ env.FIRMWARE_PATH }}
+          fetch-depth: 0
+
+      - name: Install qemu-system-arm
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-arm
+
+      - name: Install nrfutil toolchain manager
+        run: |
+          curl https://files.nordicsemi.com/artifactory/swtools/external/nrfutil/executables/x86_64-unknown-linux-gnu/nrfutil -o nrfutil
+          chmod +x nrfutil
+          ./nrfutil install toolchain-manager
+          ./nrfutil toolchain-manager install --ncs-version ${{ env.NCS_VERSION }}
+          rm /home/runner/ncs/toolchains/*/usr/local/bin/git || true
+
+      # One continuous script, not separate steps, so the toolchain PATH
+      # and NCS_TOOLCHAIN exports (which `make test`'s libffi shim needs -
+      # see Makefile) stay in scope all the way through - GitHub Actions
+      # steps are separate shells and a plain `export` in one step is
+      # invisible to the next.
+      #
+      # west.yml addresses paltatech/vx_sdk_nrf and paltatech/vx_zephyr_boards
+      # over SSH (git@github.com:paltatech/...); rewritten to HTTPS+token
+      # below the same way every other paltatech firmware repo's CI does
+      # it. Assumes a MY_GITHUB_TOKEN secret with read access to those repos
+      # exists for this repo/org - unverified from this environment, no way
+      # to trigger a real Actions run and confirm. See
+      # docs/testing_ecosystem.md.
+      - name: Init west workspace and run tests
+        env:
+          GITHUB_TOKEN: ${{ secrets.MY_GITHUB_TOKEN }}
+        run: |
+          set -e
+
+          NCS_TOOLCHAIN=$(ls -d "$HOME"/ncs/toolchains/*/ | head -1)
+          NCS_TOOLCHAIN=${NCS_TOOLCHAIN%/}
+          export NCS_TOOLCHAIN
+          export PATH="$NCS_TOOLCHAIN/usr/local/bin:$NCS_TOOLCHAIN/usr/local/cmake:$PATH"
+          export LD_LIBRARY_PATH="$NCS_TOOLCHAIN/usr/local/lib:$LD_LIBRARY_PATH"
+          export ZEPHYR_TOOLCHAIN_VARIANT=zephyr
+          export ZEPHYR_SDK_INSTALL_DIR="$NCS_TOOLCHAIN/opt/zephyr-sdk"
+
+          cd ${{ env.PROJECTS_PATH }}
+          git config --global url."https://x-access-token:${GITHUB_TOKEN}@github.com/paltatech/".insteadOf "git@github.com:paltatech/"
+
+          west init -l ble_audio
+          mv .west ../
+          west config manifest.path projects/ble_audio
+          west update --narrow -o=--depth=1
+
+          pip install -r ../zephyr/scripts/requirements.txt
+          pip install -r ../nrf/scripts/requirements.txt
+
+          source ../zephyr/zephyr-env.sh
+          west zephyr-export
+
+          cd ble_audio
+          make test

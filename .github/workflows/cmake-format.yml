@@ -1,0 +1,26 @@
+name: cmake-format
+
+on:
+  pull_request:
+  push:
+    branches:
+      - develop
+
+  workflow_dispatch:
+
+jobs:
+  check-cmake-format:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: install cmakelang
+        run: pip install cmakelang
+
+      - name: check cmake formatting
+        run: |
+          make lint-cmake
+          git diff --exit-code
