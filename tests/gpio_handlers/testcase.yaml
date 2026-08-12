@@ -1,0 +1,9 @@
+tests:
+  # gpio-emul is a native_sim/native_posix-only simulation driver - there's
+  # no QEMU equivalent, so unlike the other suites this one is native_sim
+  # only by design, not by omission.
+  ble_audio.gpio_handlers:
+    platform_allow: native_sim
+    integration_platforms:
+      - native_sim
+    tags: gpio_handlers

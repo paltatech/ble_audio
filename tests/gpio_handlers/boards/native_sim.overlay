@@ -1,0 +1,19 @@
+/*
+ * native_sim already defines gpio0 as a zephyr,gpio-emul controller with
+ * a led0 alias (pin 0) built in. Only sw0/button0 is missing - add it on
+ * the same fake controller, on a different pin.
+ */
+
+/ {
+	aliases {
+		sw0 = &button0;
+	};
+
+	buttons {
+		compatible = "gpio-keys";
+		button0: button_0 {
+			gpios = <&gpio0 1 GPIO_ACTIVE_HIGH>;
+			label = "Test button";
+		};
+	};
+};
