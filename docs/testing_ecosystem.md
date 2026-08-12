@@ -23,6 +23,10 @@ what happens in each phase) lives in the session's plan file and is
 summarized per-priority below as it's implemented. This document is the
 durable, in-repo record — the plan file is not.
 
+This document is the *why* (history, real bugs found, decisions made).
+For the *how* — running tests day to day, what each suite does, how to
+add a new one — see [testing_guide.md](testing_guide.md).
+
 ## Status at a glance
 
 | Priority | Topic | Status |

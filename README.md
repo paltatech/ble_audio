@@ -2,7 +2,10 @@
 
 An LE Audio unicast server (headset) firmware project, with a working
 example of the Zephyr testing ecosystem progression built alongside it -
-see [docs/testing_ecosystem.md](docs/testing_ecosystem.md).
+see [docs/testing_ecosystem.md](docs/testing_ecosystem.md) for the *why*
+(phase-by-phase history, real bugs found) and
+[docs/testing_guide.md](docs/testing_guide.md) for the *how* (running
+and adding tests, day to day).
 
 ## Status
 
@@ -36,7 +39,10 @@ pulled for now, pending a decision on whether to drop it.
   - Linux: `~/ncs/toolchains/<hash>`
   - Windows: `C:/ncs/toolchains/<hash>`
 - **J-Link** debugger for flashing and debugging
-- **`qemu-system-arm`** to run `make test`'s 32-bit leg (`sudo apt-get
+- **`gcc-multilib`/`g++-multilib`** for `make test`'s `native_sim` leg,
+  which builds 32-bit (`sudo apt-get install gcc-multilib g++-multilib`
+  on Linux) — see [docs/testing_guide.md](docs/testing_guide.md)
+- **`qemu-system-arm`** to run `make test`'s QEMU leg (`sudo apt-get
   install qemu-system-arm` on Linux) — see
   [docs/testing_ecosystem.md](docs/testing_ecosystem.md)
 - **`twister_harness`** pytest plugin, only needed for `make test-hil`
@@ -123,11 +129,13 @@ make flash JLINK_SERIAL=683980738
 make test
 ```
 
-Runs `tests/` under Twister across `native_sim` (64-bit host) and
-`mps3/an547` (32-bit QEMU) — see
-[docs/testing_ecosystem.md](docs/testing_ecosystem.md) for what's covered
-and why those platforms. Requires `qemu-system-arm` (see Prerequisites
-above) for the 32-bit leg.
+Runs `tests/` under Twister across `native_sim` (32-bit host, needs
+`gcc-multilib`), `native_sim/native/64` (64-bit host), and `mps3/an547`
+(32-bit QEMU, real ARM cross-compile) — see
+[docs/testing_guide.md](docs/testing_guide.md) for how tests are
+organized and [docs/testing_ecosystem.md](docs/testing_ecosystem.md) for
+why those platforms. Requires `qemu-system-arm` (see Prerequisites above)
+for the QEMU leg.
 
 ### Clean Test Output
 
