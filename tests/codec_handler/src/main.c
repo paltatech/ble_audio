@@ -103,6 +103,74 @@ ZTEST(codec_handler, test_decode_valid_frame_produces_pcm)
 	zassert_true(changed, "decoded PCM buffer was never written");
 }
 
+struct lc3_param_case {
+	int freq_hz;
+	int frame_duration_us;
+};
+
+/* The full grid LC3 supports (lc3.h: "sr_hz: 8000, 16000, 24000, 32000 or
+ * 48000", "dt_us: 7500 or 10000") - our codec cap declares
+ * BT_AUDIO_CODEC_CAP_FREQ_ANY, so a real peer can negotiate any of these,
+ * not just the 48 kHz/10 ms case the other tests above happen to use.
+ */
+static const struct lc3_param_case lc3_param_cases[] = {
+	{8000, 7500},	{8000, 10000}, {16000, 7500},  {16000, 10000}, {24000, 7500},
+	{24000, 10000}, {32000, 7500}, {32000, 10000}, {48000, 7500},  {48000, 10000},
+};
+
+#define PARAM_TEST_BITRATE 32000
+
+ZTEST(codec_handler, test_decode_sample_count_matches_freq_and_duration)
+{
+	/* LC3's encoder/decoder memory and PCM buffers are several KB - kept
+	 * static like everywhere else in this codebase (see codec_handler.c
+	 * itself), not on the stack. A stack-local lc3_encoder_mem_48k_t
+	 * here is exactly what overflowed CONFIG_ZTEST_STACK_SIZE under
+	 * mps3/an547 the first time this test was written.
+	 */
+	static lc3_encoder_t param_encoder;
+	static lc3_encoder_mem_48k_t param_encoder_mem;
+	static int16_t pcm_in[AUDIO_MAX_SAMPLES_PER_FRAME];
+	static int16_t pcm_out[AUDIO_MAX_SAMPLES_PER_FRAME];
+	static uint8_t frame[TEST_FRAME_BYTES];
+
+	for (size_t i = 0; i < ARRAY_SIZE(lc3_param_cases); i++) {
+		const struct lc3_param_case *tc = &lc3_param_cases[i];
+		int frame_bytes;
+		int expected_samples;
+		int num_samples;
+
+		expected_samples = lc3_frame_samples(tc->frame_duration_us, tc->freq_hz);
+		zassert_true(expected_samples > 0, "case %zu: bad freq/duration", i);
+
+		frame_bytes = lc3_frame_bytes(tc->frame_duration_us, PARAM_TEST_BITRATE);
+		zassert_true(frame_bytes > 0 && frame_bytes <= (int)sizeof(frame),
+			     "case %zu: unexpected frame size %d", i, frame_bytes);
+
+		param_encoder = lc3_setup_encoder(tc->frame_duration_us, tc->freq_hz, 0,
+						  &param_encoder_mem);
+		zassert_not_null(param_encoder, "case %zu: encoder setup failed", i);
+
+		for (int s = 0; s < expected_samples; s++) {
+			pcm_in[s] =
+				(int16_t)(10000.0 * sin(2.0 * 3.14159 * 100.0 * s / tc->freq_hz));
+		}
+		zassert_ok(lc3_encode(param_encoder, LC3_PCM_FORMAT_S16, pcm_in, 1, frame_bytes,
+				      frame),
+			   "case %zu: encode failed", i);
+
+		zassert_ok(codec_handler_configure(tc->freq_hz, tc->frame_duration_us),
+			   "case %zu: configure failed", i);
+
+		num_samples = codec_handler_decode(frame, frame_bytes, pcm_out);
+
+		zassert_equal(num_samples, expected_samples,
+			      "case %zu (freq=%d dur=%d): decode returned %d "
+			      "samples, expected %d",
+			      i, tc->freq_hz, tc->frame_duration_us, num_samples, expected_samples);
+	}
+}
+
 ZTEST(codec_handler, test_decode_packet_loss_produces_concealment)
 {
 	int16_t pcm[AUDIO_MAX_SAMPLES_PER_FRAME];

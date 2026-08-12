@@ -25,8 +25,8 @@ durable, in-repo record — the plan file is not.
 |---|---|---|
 | 1 | Unit tests & `native_sim` | ✅ Done — `tests/codec_handler/` |
 | 2 | Twister, 32/64-bit targets | ✅ Done — `make test` |
-| 3 | FFF mocking, devicetree fakes, parameterized tests | 🔜 Next |
-| 4 | HIL, pytest/Robot | Pending |
+| 3 | FFF mocking, devicetree fakes, parameterized tests | ✅ Done — `tests/app_streamctrl/`, `tests/gpio_handlers/` |
+| 4 | HIL, pytest/Robot | 🔜 Next |
 | 5 | CI/CD, `ztress`, shuffle | Pending |
 
 ## Priority 1: Unit Tests & Native Simulation — done
@@ -134,15 +134,74 @@ would not have been found by `native_sim` alone.
 $NCS_TOOLCHAIN` in the same shell). `make test` needs it to locate the
 `libffi` shim source. Fixed with one `export NCS_TOOLCHAIN` line.
 
-## Priority 3: Mocking & Value-Parameterized Tests — next
+## Priority 3: Mocking & Value-Parameterized Tests — done
 
-Plan: FFF mocks for `ble_audio_handler`'s BT calls (`bt_bap_stream_start`
-and friends) so `application/app_streamctrl.c`'s state machine can be
-tested without a real controller; devicetree fakes (`zephyr,fake-gpio`)
-for `led_handler`/`button_handler`; value-parameterized cases for LC3
-frame-duration/bitrate combinations instead of hand-copied test cases.
+**What was built:** three additions, one per technique named in the doc.
 
-## Priority 4: HIL & Multi-Harness Integration — pending
+**`tests/app_streamctrl/` (FFF mocking).** Compiles the real
+`app_streamctrl.c` against FFF fakes of all five middlewares it depends
+on (`led_handler`, `button_handler`, `audio_handler`, `codec_handler`,
+`ble_audio_handler`) instead of their real implementations - no BT stack
+or hardware involved. The fake `ble_audio_handler_start()` captures the
+`ble_audio_handler_cb` struct `app_streamctrl` registers; tests then
+invoke `captured_cb->connected()`, `->stream_recv()`, etc. directly to
+drive the state machine and assert on what it called downstream (LED on
+connect, codec configured on stream setup, decoded audio forwarded to
+`audio_handler_write()`, decode errors *not* forwarded, codec reset on
+stream stop). No FPU dependency, so unlike `codec_handler` this suite
+runs on plain `qemu_cortex_m3` - confirmation that FPU only mattered for
+the one suite that touches `liblc3` directly.
+
+**`tests/gpio_handlers/` (devicetree fakes).** Compiles the real
+`led_handler.c`/`button_handler.c` against `native_sim`'s built-in
+`zephyr,gpio-emul` controller (`gpio0` - it already ships a `led0`
+alias; `boards/native_sim.overlay` adds the `sw0`/button node it doesn't
+provide by default). Drives the button via `gpio_emul_input_set()` and
+reads the LED back via `gpio_emul_output_get()` - real GPIO driver calls,
+no physical hardware. `gpio-emul` is host-simulation-only (no QEMU
+equivalent), so this suite is `native_sim`-only by design.
+
+**Extended `tests/codec_handler/`'s existing suite (value-parameterized
+tests).** One `ZTEST` loops over all 10 combinations LC3 supports (`8/16/
+24/32/48` kHz × `7.5/10` ms - `lc3.h`'s own documented grid), encoding a
+real tone and decoding it through `codec_handler` for each, instead of
+10 hand-copied test functions.
+
+**Two real bugs found, both in code Priority 1/2 already "covered":**
+
+- `codec_handler_decode()` always returned the hardcoded
+  `AUDIO_MAX_SAMPLES_PER_FRAME` (480, valid only for the 48 kHz/10 ms
+  case every earlier test happened to use) instead of the actual decoded
+  sample count. Since the codec cap declares
+  `BT_AUDIO_CODEC_CAP_FREQ_ANY`, a real peer negotiating any other
+  frequency would get a wrong sample count back - e.g. 480 instead of 60
+  for 8 kHz/7.5 ms, confirmed by the first run of the new parameterized
+  test before it was fixed. Fixed by computing the real count via
+  `lc3_frame_samples(configured_frame_us, configured_freq_hz)`. This is
+  exactly what value-parameterized testing is for: the 48 kHz/10 ms-only
+  coverage from Priority 1/2 could not have caught it.
+- `button_handler_init()` registers a GPIO callback on a `static`
+  struct via `gpio_add_callback()`, which - like `codec_handler`'s
+  decoder - is only safe to call once per struct without an intervening
+  `gpio_remove_callback()`. The first version of `gpio_handlers`'s
+  `before` hook called `button_handler_init()` on every test, which
+  corrupted the (intrusive, singly-linked) GPIO callback list on the
+  second call. Fixed by moving `led_handler_init()`/
+  `button_handler_init()` into the suite-level `setup` (once), keeping
+  only pin/counter state reset in `before` (per test) - the same
+  distinction Priority 1 already established for `codec_handler`, now
+  confirmed to generalize to a second, unrelated module.
+
+**A third, narrower bug:** the parameterized test's first draft declared
+its `lc3_encoder_mem_48k_t` (several KB) as a stack-local inside the
+`ZTEST` function body. That alone was enough to overflow
+`CONFIG_ZTEST_STACK_SIZE=8192` under `mps3/an547`, even though the
+*production* code and every earlier test in the file keep this class of
+LC3 memory buffer `static`. Fixed by making the parameterized test's
+buffers `static` too, matching that established convention instead of
+reintroducing the pattern that caused Priority 2's stack overflow.
+
+## Priority 4: HIL & Multi-Harness Integration — next
 
 Plan: once real nRF5340 Audio DK hardware is available, a Twister
 hardware-map entry (J-Link/UART) for on-target runs, plus a `pytest`
@@ -173,3 +232,10 @@ baseline expectation for every suite added from here on, not a one-off);
 - `nrf/tests/nrf5340_audio/{macros,sw_codec_lc3}` — Nordic's own
   `native_sim`/`qemu_cortex_m3` and on-target LC3 test suites; structural
   template for `tests/codec_handler/`.
+- `zephyr/tests/lib/acpi/unit` — real in-tree FFF usage (fake
+  declarations, `custom_fake`, resetting fakes in a `before` hook);
+  template for `tests/app_streamctrl/`.
+- `zephyr/boards/native/native_sim/native_sim.dts` and
+  `zephyr/include/zephyr/drivers/gpio/gpio_emul.h` — native_sim's
+  built-in `zephyr,gpio-emul` controller and its `gpio_emul_input_set()`/
+  `gpio_emul_output_get()` API; used directly by `tests/gpio_handlers/`.

@@ -4,7 +4,6 @@
 #include <zephyr/logging/log.h>
 
 #include "codec_handler.h"
-#include "audio_defs.h"
 
 LOG_MODULE_REGISTER(codec_handler, LOG_LEVEL_INF);
 
@@ -46,7 +45,7 @@ int codec_handler_decode(const uint8_t *data, size_t len, int16_t *pcm_out)
 		return err;
 	}
 
-	return AUDIO_MAX_SAMPLES_PER_FRAME;
+	return lc3_frame_samples(configured_frame_us, configured_freq_hz);
 }
 
 void codec_handler_reset(void)
