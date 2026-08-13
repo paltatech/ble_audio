@@ -18,7 +18,7 @@
 DEFINE_FFF_GLOBALS;
 
 FAKE_VALUE_FUNC(int, led_handler_init);
-FAKE_VALUE_FUNC(int, led_handler_set, bool);
+FAKE_VALUE_FUNC(int, led_handler_set, uint8_t, bool);
 
 FAKE_VALUE_FUNC(int, button_handler_init, button_handler_pressed_cb_t);
 
@@ -94,7 +94,8 @@ ZTEST(app_streamctrl, test_connected_turns_led_on)
 	captured_cb->connected();
 
 	zassert_equal(led_handler_set_fake.call_count, 1);
-	zassert_true(led_handler_set_fake.arg0_val, "LED should turn on when connected");
+	zassert_equal(led_handler_set_fake.arg0_val, 0, "should drive the status LED (id 0)");
+	zassert_true(led_handler_set_fake.arg1_val, "LED should turn on when connected");
 }
 
 ZTEST(app_streamctrl, test_disconnected_turns_led_off)
@@ -104,7 +105,8 @@ ZTEST(app_streamctrl, test_disconnected_turns_led_off)
 	captured_cb->disconnected();
 
 	zassert_equal(led_handler_set_fake.call_count, 1);
-	zassert_false(led_handler_set_fake.arg0_val, "LED should turn off when disconnected");
+	zassert_equal(led_handler_set_fake.arg0_val, 0, "should drive the status LED (id 0)");
+	zassert_false(led_handler_set_fake.arg1_val, "LED should turn off when disconnected");
 }
 
 ZTEST(app_streamctrl, test_stream_configured_configures_codec)
@@ -203,7 +205,7 @@ static bool ztress_button_press_handler(void *user_data, uint32_t cnt, bool last
 	ARG_UNUSED(last);
 	ARG_UNUSED(prio);
 
-	captured_button_cb();
+	captured_button_cb(0);
 
 	return true;
 }

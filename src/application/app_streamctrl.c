@@ -19,16 +19,22 @@ LOG_MODULE_REGISTER(app_streamctrl, LOG_LEVEL_INF);
 
 static int16_t pcm_buf[AUDIO_MAX_SAMPLES_PER_FRAME];
 
+/* LED0 is the connection-status LED. LED1-3 are physically available on
+ * this board (see docs/testing_ecosystem.md's "Board swap" section) but
+ * unused so far.
+ */
+#define STATUS_LED_ID 0
+
 static void on_connected(void)
 {
 	LOG_INF("Headset connected");
-	led_handler_set(true);
+	led_handler_set(STATUS_LED_ID, true);
 }
 
 static void on_disconnected(void)
 {
 	LOG_INF("Headset disconnected");
-	led_handler_set(false);
+	led_handler_set(STATUS_LED_ID, false);
 }
 
 static void on_stream_configured(const struct ble_audio_handler_stream_info *info)
@@ -70,9 +76,9 @@ static void on_stream_stopped(void)
 	codec_handler_reset();
 }
 
-static void on_button_pressed(void)
+static void on_button_pressed(uint8_t button_id)
 {
-	LOG_INF("Button pressed");
+	LOG_INF("Button %u pressed", button_id);
 }
 
 static const struct ble_audio_handler_cb ble_audio_cb = {

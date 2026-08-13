@@ -1,19 +1,42 @@
 /*
- * native_sim already defines gpio0 as a zephyr,gpio-emul controller with
- * a led0 alias (pin 0) built in. Only sw0/button0 is missing - add it on
- * the same fake controller, on a different pin.
+ * native_sim already defines gpio0 as a zephyr,gpio-emul controller.
+ * led0 (pin 0) is built into native_sim's own .dts; sw0/button0 (pin 1),
+ * led1 (pin 2), and sw1/button1 (pin 3) are added here. led0 is also
+ * re-stated below (same pin/values as the base .dts) so every LED/button
+ * this test suite uses is visible in one place, not split between here
+ * and native_sim's own devicetree.
  */
 
 / {
 	aliases {
+		/* led0's alias already comes from native_sim's own .dts -
+		 * led1 is new here and needs one explicitly, same as sw0/sw1.
+		 */
+		led1 = &led1;
 		sw0 = &button0;
+		sw1 = &button1;
+	};
+
+	leds {
+		led0: led_0 {
+			gpios = <&gpio0 0 GPIO_ACTIVE_HIGH>;
+			label = "Test LED 0";
+		};
+		led1: led_1 {
+			gpios = <&gpio0 2 GPIO_ACTIVE_HIGH>;
+			label = "Test LED 1";
+		};
 	};
 
 	buttons {
 		compatible = "gpio-keys";
 		button0: button_0 {
 			gpios = <&gpio0 1 GPIO_ACTIVE_HIGH>;
-			label = "Test button";
+			label = "Test button 0";
+		};
+		button1: button_1 {
+			gpios = <&gpio0 3 GPIO_ACTIVE_HIGH>;
+			label = "Test button 1";
 		};
 	};
 };
