@@ -280,6 +280,15 @@ platforms it ran on - 0 failed).
 
 ## Priority 4: HIL & Multi-Harness Integration — done
 
+**Update: `make test-hil` was later actually run against real
+hardware** (not just `--build-only`) - see
+[hil_testing.md](hil_testing.md) for the setup steps, the bugs hit
+getting it running at all (a stale `.egg-info` causing pytest plugin
+double-registration - environment tooling, not this codebase), and a
+real, still-unresolved bug in the UART logging `extra_configs` below
+that's currently the reason the test doesn't pass yet even though the
+device flashes and boots correctly.
+
 **Board note (added later, when real hardware turned out to be the
 plain nRF5340 DK, not the Audio DK):** everything below originally
 targeted `ble_audio_board/nrf5340/cpuapp`, a custom board in the

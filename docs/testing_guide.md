@@ -178,7 +178,6 @@ unless you're iterating on one suite.
 ```bash
 cp tools/hardware-map.example.yml tools/hardware-map.yml
 # edit tools/hardware-map.yml: fill in your J-Link serial (nrfjprog --ids)
-pip install zephyr/scripts/pylib/pytest-twister-harness   # once
 make test-hil
 ```
 
@@ -187,6 +186,15 @@ watches its real boot log over UART. It's the only test in this repo that
 proves the shipped image actually boots on real silicon — everything
 under `tests/` is a substitute for hardware, not a replacement for
 checking it works on hardware.
+
+**Getting this actually running the first time needs more than the
+three lines above** - a plain `pip install
+zephyr/scripts/pylib/pytest-twister-harness` looks like the obvious
+next step but is exactly what causes one of the real bugs found running
+this for real. See [hil_testing.md](hil_testing.md) for the tools that
+actually need installing, the bugs hit getting it running, and current
+status (short version: build and flash work, the test itself doesn't
+pass yet - a real, separate, unresolved bug).
 
 ---
 
