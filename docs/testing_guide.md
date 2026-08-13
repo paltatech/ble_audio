@@ -17,7 +17,6 @@ root [README.md](../README.md) (NCS toolchain, `source
 |---|---|---|
 | `gcc-multilib` / `g++-multilib` | `native_sim` (builds 32-bit by default) | `sudo apt-get install gcc-multilib g++-multilib` |
 | `qemu-system-arm` | `mps3/an547` / `qemu_cortex_m3` legs | `sudo apt-get install qemu-system-arm` |
-| `twister_harness` (pip) | `make test-hil` only | `pip install zephyr/scripts/pylib/pytest-twister-harness` |
 | `tools/hardware-map.yml` | `make test-hil` only | copy `tools/hardware-map.example.yml`, fill in your J-Link serial |
 
 Nothing else is test-specific — `make test` reuses the same NCS toolchain
@@ -73,8 +72,9 @@ which one you're in:
 │                  build only - shipped image is RTT)               │
 │                             │                                     │
 │                             ▼                                     │
-│         pytest/test_boot.py (twister_harness.DeviceAdapter)       │
-│         waits for "Bluetooth initialized", "Advertising started"  │
+│         Twister's own harness: console (sample.yaml) watches     │
+│         for "Bluetooth initialized", then "Advertising started"  │
+│         - no pytest, no extra Python plugin needed                │
 │                             │                                     │
 │                             ▼                                     │
 │                     PASS/FAIL on real hardware                    │
@@ -94,7 +94,7 @@ never run automatically — it's `make test-hil`, on demand.
 | `codec_handler` | `middlewares/codec_handler/codec_handler.c` (real `liblc3`) | Value-parameterized (10-case LC3 freq/duration grid) | `native_sim`, `native_sim/native/64`, `mps3/an547` | none |
 | `app_streamctrl` | `application/app_streamctrl.c` | FFF mocking (4 active middleware fakes; `audio_handler`'s are commented out, see below) + `ztress` concurrency | `native_sim`, `native_sim/native/64`, `qemu_cortex_m3` | none |
 | `gpio_handlers` | `middlewares/led_handler/`, `middlewares/button_handler/` (real) | Devicetree GPIO fakes (`zephyr,gpio-emul`) | `native_sim` only | none (emulated GPIO) |
-| `ble_audio.hil_boot` (`sample.yaml`, project root) | the real production image, unmodified | `harness: pytest`, boot-log assertions | `nrf5340dk/nrf5340/cpuapp` | real DK + J-Link |
+| `ble_audio.hil_boot` (`sample.yaml`, project root) | the real production image, unmodified | `harness: console`, ordered boot-log regex match | `nrf5340dk/nrf5340/cpuapp` | real DK + J-Link |
 
 Every `tests/*/prj.conf` also sets `CONFIG_ZTEST_SHUFFLE=y` — each suite
 runs 3x with shuffled order (Kconfig defaults). A suite that leaks state
@@ -156,6 +156,19 @@ not by omission.
 
 ### `ble_audio.hil_boot` — the only one that touches real hardware
 
+Uses Twister's built-in `harness: console` — Twister itself watches the
+UART for `"Bluetooth initialized"` then `"Advertising started"`, in
+order (`harness_config: type: multi_line`). No pytest, no
+`twister_harness` plugin, nothing extra to install: this is the same
+mechanism `ztest-hil-nrf52833` (a sibling project) uses for its whole
+suite. `harness: pytest` (a full Python test framework via a
+`DeviceAdapter` fixture) is the right tool for HIL scenarios needing
+actual multi-step logic - driving a second device, complex parsing -
+but a fixed boot-log check isn't one of those, and pytest was real,
+avoidable fragility here (see
+[hil_testing.md](hil_testing.md)'s Bug 1 for what that fragility looked
+like in practice).
+
 See the [HIL section](#running-hil-tests-real-hardware) below.
 
 ---
@@ -187,14 +200,15 @@ proves the shipped image actually boots on real silicon — everything
 under `tests/` is a substitute for hardware, not a replacement for
 checking it works on hardware.
 
-**Getting this actually running the first time needs more than the
-three lines above** - a plain `pip install
-zephyr/scripts/pylib/pytest-twister-harness` looks like the obvious
-next step but is exactly what causes one of the real bugs found running
-this for real. See [hil_testing.md](hil_testing.md) for the tools that
-actually need installing, the bugs hit getting it running, and current
-status (short version: build and flash work, the test itself doesn't
-pass yet - a real, separate, unresolved bug).
+The three lines above are genuinely all the setup needed now -
+`sample.yaml` uses Twister's built-in `harness: console`, not pytest,
+so there's no extra Python plugin to install or get wrong (that used to
+be a real source of fragility here; see
+[hil_testing.md](hil_testing.md)'s Bug 1 for what it looked like before
+this was simplified away). What `hil_testing.md` still documents: a
+real, separate, unresolved bug where the app's log output doesn't
+consistently reach UART - build and flash work, the test itself doesn't
+pass yet.
 
 ---
 
@@ -225,9 +239,15 @@ pass yet - a real, separate, unresolved bug).
      (`zephyr,gpio-emul` or similar), like `gpio_handlers`. Compiles the
      real driver-facing code against an emulated controller.
    - **Needs real silicon** (timing, real peripherals with no
-     `native_sim` emulation) → HIL, extending `sample.yaml`/`pytest/`.
-     Last resort — everything else is faster to run and doesn't need
-     hardware in hand.
+     `native_sim` emulation) → HIL, extending `sample.yaml`. Prefer
+     `harness: console` (regex match on boot/log output, like
+     `ble_audio.hil_boot`) unless the scenario genuinely needs
+     multi-step Python logic (driving a second device, complex
+     parsing) - only then reach for `harness: pytest`, and budget for
+     the extra fragility that brings (see
+     [hil_testing.md](hil_testing.md)'s Bug 1). Last resort overall -
+     everything else is faster to run and doesn't need hardware in
+     hand.
 
 2. **Scaffold the directory** (for `tests/`-style suites):
    ```

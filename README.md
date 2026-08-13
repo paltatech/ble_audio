@@ -45,8 +45,6 @@ pulled for now, pending a decision on whether to drop it.
 - **`qemu-system-arm`** to run `make test`'s QEMU leg (`sudo apt-get
   install qemu-system-arm` on Linux) — see
   [docs/testing_ecosystem.md](docs/testing_ecosystem.md)
-- **`twister_harness`** pytest plugin, only needed for `make test-hil`
-  (`pip install zephyr/scripts/pylib/pytest-twister-harness`)
 
 ## Project Setup
 
@@ -151,12 +149,12 @@ make test-hil
 
 Flashes the real production image onto a physical
 `nrf5340dk/nrf5340/cpuapp` and checks its boot log (Bluetooth init,
-advertising start) over UART. Not part of `make test` — needs real
+advertising start) over UART — via Twister's built-in `harness: console`
+regex matching, no pytest involved. Not part of `make test` — needs real
 hardware and a filled-in `tools/hardware-map.yml` (copy
-`tools/hardware-map.example.yml` and fill in your board's J-Link serial),
-plus the `twister_harness` plugin from Prerequisites above. See
-[docs/testing_ecosystem.md](docs/testing_ecosystem.md) for what's
-verified vs. not without hardware in hand.
+`tools/hardware-map.example.yml` and fill in your board's J-Link serial).
+See [docs/hil_testing.md](docs/hil_testing.md) for setup and current
+status.
 
 ## Continuous Integration
 
@@ -242,5 +240,4 @@ _build_ble_audio_nrf5340dk_nrf5340_cpuapp/
 - `docs/` — design notes, test reports, and other project documentation
 - `release/` — packaged release artifacts (populated by `prepare_release.sh`)
 - `tests/` — `ztest` suites, one per subfolder, run via `make test`
-- `pytest/` — hardware-in-the-loop pytest cases, run via `make test-hil`
 - `tools/` — build system helpers (CMake, Make, gitlint, clang-format/cmake-format)

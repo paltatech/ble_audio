@@ -34,7 +34,7 @@ add a new one — see [testing_guide.md](testing_guide.md).
 | 1 | Unit tests & `native_sim` | ✅ Done — `tests/codec_handler/` |
 | 2 | Twister, 32/64-bit targets | ✅ Done — `make test` |
 | 3 | FFF mocking, devicetree fakes, parameterized tests | ✅ Done — `tests/app_streamctrl/`, `tests/gpio_handlers/` |
-| 4 | HIL, pytest/Robot | ✅ Done — `make test-hil` (schema/build verified; on-device run needs real hardware) |
+| 4 | HIL, pytest/Robot | ✅ Done — `make test-hil` (`harness: console`, no pytest; build/flash verified on real hardware, test itself blocked on an open UART logging bug - see [hil_testing.md](hil_testing.md)) |
 | 5 | CI/CD, `ztress`, shuffle | ✅ Done — shuffle + `ztress` verified locally; CI workflows syntax-checked, not run for real |
 
 ## Priority 1: Unit Tests & Native Simulation — done
@@ -281,13 +281,17 @@ platforms it ran on - 0 failed).
 ## Priority 4: HIL & Multi-Harness Integration — done
 
 **Update: `make test-hil` was later actually run against real
-hardware** (not just `--build-only`) - see
-[hil_testing.md](hil_testing.md) for the setup steps, the bugs hit
-getting it running at all (a stale `.egg-info` causing pytest plugin
-double-registration - environment tooling, not this codebase), and a
-real, still-unresolved bug in the UART logging `extra_configs` below
-that's currently the reason the test doesn't pass yet even though the
-device flashes and boots correctly.
+hardware** (not just `--build-only`), and `sample.yaml` was simplified
+from `harness: pytest` (described below, as originally built) to
+`harness: console` after running into real, avoidable fragility with
+the pytest approach for what turned out to be a fixed two-line boot
+check - `pytest/test_boot.py` and the `twister_harness` plugin
+dependency described below no longer exist. See
+[hil_testing.md](hil_testing.md) for the full history (the pytest
+plugin double-registration bug that motivated the simplification) and
+current status: build/flash work, but a real, still-unresolved bug in
+the UART logging `extra_configs` means the test doesn't pass yet even
+though the device flashes and boots correctly.
 
 **Board note (added later, when real hardware turned out to be the
 plain nRF5340 DK, not the Audio DK):** everything below originally
@@ -300,7 +304,9 @@ below was re-run, not just relabeled). See "Board swap" below and the
 root `README.md`'s Status section for what else that board swap changed
 (`audio_handler` disabled - no I2S codec chip on this DK).
 
-**What was built:** `make test-hil` — a separate Twister invocation, not
+**What was built (originally - see the Update note above, this section
+describes the `pytest`-based design later replaced by `harness:
+console`):** `make test-hil` — a separate Twister invocation, not
 part of `make test`, that flashes the *real production image* (this
 project's own `CMakeLists.txt`/`src/`/`prj.conf`, not a stub under
 `tests/`) onto a physical nRF5340 DK and checks its actual boot log

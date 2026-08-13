@@ -8,7 +8,18 @@ sample:
     `make test-hil`.
 tests:
   ble_audio.hil_boot:
-    harness: pytest
+    # Console harness: Twister itself watches the UART for these two
+    # lines, in order - no pytest/twister_harness needed. That plugin
+    # only earns its keep for HIL scenarios that need actual Python
+    # logic (driving a second device, multi-step interaction); a fixed
+    # boot-log check doesn't, and pytest was real, avoidable fragility
+    # here (see docs/hil_testing.md's Bug 1).
+    harness: console
+    harness_config:
+      type: multi_line
+      regex:
+        - "Bluetooth initialized"
+        - "Advertising started"
     platform_allow: nrf5340dk/nrf5340/cpuapp
     extra_configs:
       # Production prj.conf logs over RTT only (CONFIG_UART_CONSOLE=n).
@@ -20,4 +31,3 @@ tests:
       - CONFIG_UART_CONSOLE=y
     tags:
       - hil
-      - pytest
