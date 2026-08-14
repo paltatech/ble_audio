@@ -32,4 +32,5 @@ target_include_directories(
           ${BLE_AUDIO_SRC}/middlewares/audio_handler
           ${BLE_AUDIO_SRC}/middlewares/codec_handler
           ${BLE_AUDIO_SRC}/middlewares/ble_audio_handler
+          ${BLE_AUDIO_SRC}/middlewares/power_handler
 )

@@ -14,6 +14,7 @@
 #include "button_handler.h"
 #include "codec_handler.h"
 #include "led_handler.h"
+#include "power_handler.h"
 
 DEFINE_FFF_GLOBALS;
 
@@ -21,6 +22,9 @@ FAKE_VALUE_FUNC(int, led_handler_init);
 FAKE_VALUE_FUNC(int, led_handler_set, uint8_t, bool);
 
 FAKE_VALUE_FUNC(int, button_handler_init, button_handler_pressed_cb_t);
+
+FAKE_VALUE_FUNC(int, power_handler_init);
+FAKE_VALUE_FUNC(int, power_handler_read_mv, int32_t *);
 
 /* FAKE_VALUE_FUNC(int, audio_handler_init); */
 /* FAKE_VALUE_FUNC(int, audio_handler_write, const int16_t *, size_t); */
@@ -52,6 +56,18 @@ static int fake_button_handler_init(button_handler_pressed_cb_t cb)
 	return 0;
 }
 
+/* Tests set this directly before calling app_streamctrl_start() to drive
+ * a specific simulated input voltage through power_handler_read_mv()'s
+ * out-param.
+ */
+static int32_t fake_power_mv;
+
+static int fake_power_handler_read_mv(int32_t *mv)
+{
+	*mv = fake_power_mv;
+	return 0;
+}
+
 static void app_streamctrl_test_before(void *fixture)
 {
 	ARG_UNUSED(fixture);
@@ -61,6 +77,8 @@ static void app_streamctrl_test_before(void *fixture)
 	RESET_FAKE(button_handler_init);
 	/* RESET_FAKE(audio_handler_init); */
 	/* RESET_FAKE(audio_handler_write); */
+	RESET_FAKE(power_handler_init);
+	RESET_FAKE(power_handler_read_mv);
 	RESET_FAKE(codec_handler_configure);
 	RESET_FAKE(codec_handler_decode);
 	RESET_FAKE(codec_handler_reset);
@@ -69,8 +87,10 @@ static void app_streamctrl_test_before(void *fixture)
 
 	captured_cb = NULL;
 	captured_button_cb = NULL;
+	fake_power_mv = 5000;
 	ble_audio_handler_start_fake.custom_fake = fake_ble_audio_handler_start;
 	button_handler_init_fake.custom_fake = fake_button_handler_init;
+	power_handler_read_mv_fake.custom_fake = fake_power_handler_read_mv;
 }
 
 ZTEST(app_streamctrl, test_start_initializes_all_middlewares)
@@ -83,8 +103,50 @@ ZTEST(app_streamctrl, test_start_initializes_all_middlewares)
 	 * board - see the include comment above.
 	 */
 	/* zassert_equal(audio_handler_init_fake.call_count, 1); */
+	zassert_equal(power_handler_init_fake.call_count, 1);
+	zassert_equal(power_handler_read_mv_fake.call_count, 1);
 	zassert_equal(ble_audio_handler_start_fake.call_count, 1);
 	zassert_not_null(captured_cb, "app_streamctrl should register BLE audio callbacks");
+}
+
+ZTEST(app_streamctrl, test_power_mode_high_above_threshold)
+{
+	fake_power_mv = 4001;
+
+	zassert_ok(app_streamctrl_start());
+
+	zassert_equal(app_streamctrl_get_power_mode(), APP_STREAMCTRL_POWER_MODE_HIGH);
+}
+
+ZTEST(app_streamctrl, test_power_mode_low_below_threshold)
+{
+	fake_power_mv = 3999;
+
+	zassert_ok(app_streamctrl_start());
+
+	zassert_equal(app_streamctrl_get_power_mode(), APP_STREAMCTRL_POWER_MODE_LOW);
+}
+
+/* The threshold check is "> 4000", not ">=" - a value exactly at 4000 mV
+ * is the case most likely to catch an off-by-one/wrong-comparison bug
+ * that the comfortably-above/below cases above can't.
+ */
+ZTEST(app_streamctrl, test_power_mode_boundary_exactly_at_threshold_is_low)
+{
+	fake_power_mv = 4000;
+
+	zassert_ok(app_streamctrl_start());
+
+	zassert_equal(app_streamctrl_get_power_mode(), APP_STREAMCTRL_POWER_MODE_LOW,
+		      "exactly at the threshold should not count as high power");
+}
+
+ZTEST(app_streamctrl, test_start_fails_when_power_read_fails)
+{
+	power_handler_read_mv_fake.custom_fake = NULL;
+	power_handler_read_mv_fake.return_val = -EIO;
+
+	zassert_equal(app_streamctrl_start(), -EIO);
 }
 
 ZTEST(app_streamctrl, test_connected_turns_led_on)

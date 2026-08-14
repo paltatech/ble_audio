@@ -4,6 +4,7 @@
 #include "audio_defs.h"
 #include "led_handler.h"
 #include "button_handler.h"
+#include "power_handler.h"
 /* audio_handler wraps I2S output to an external codec chip, which the
  * nrf5340dk (unlike the nRF5340 Audio DK this project originally
  * targeted) doesn't have wired up - its i2s0 devicetree node exists but
@@ -23,7 +24,16 @@ static int16_t pcm_buf[AUDIO_MAX_SAMPLES_PER_FRAME];
  * this board (see docs/testing_ecosystem.md's "Board swap" section) but
  * unused so far.
  */
-#define STATUS_LED_ID 0
+#define STATUS_LED_ID		0
+
+/* Above this input voltage the board is considered on a "high power"
+ * supply (e.g. USB-PD/barrel jack); at or below it, "low power" (e.g.
+ * battery/USB 5V rail sagging under load). power_handler only reports
+ * the sensed millivolts - deciding what that means is this layer's job.
+ */
+#define POWER_HIGH_THRESHOLD_MV 4000
+
+static enum app_streamctrl_power_mode power_mode = APP_STREAMCTRL_POWER_MODE_LOW;
 
 static void on_connected(void)
 {
@@ -92,6 +102,7 @@ static const struct ble_audio_handler_cb ble_audio_cb = {
 int app_streamctrl_start(void)
 {
 	int err;
+	int32_t power_mv;
 
 	err = led_handler_init();
 	if (err != 0) {
@@ -104,6 +115,23 @@ int app_streamctrl_start(void)
 		LOG_ERR("Failed to init button handler: %d", err);
 		return err;
 	}
+
+	err = power_handler_init();
+	if (err != 0) {
+		LOG_ERR("Failed to init power handler: %d", err);
+		return err;
+	}
+
+	err = power_handler_read_mv(&power_mv);
+	if (err != 0) {
+		LOG_ERR("Failed to read input power: %d", err);
+		return err;
+	}
+
+	power_mode = (power_mv > POWER_HIGH_THRESHOLD_MV) ? APP_STREAMCTRL_POWER_MODE_HIGH
+							  : APP_STREAMCTRL_POWER_MODE_LOW;
+	LOG_INF("Input power: %d mV (%s power mode)", power_mv,
+		power_mode == APP_STREAMCTRL_POWER_MODE_HIGH ? "high" : "low");
 
 	/*
 	 * err = audio_handler_init();
@@ -120,4 +148,9 @@ int app_streamctrl_start(void)
 	}
 
 	return 0;
+}
+
+enum app_streamctrl_power_mode app_streamctrl_get_power_mode(void)
+{
+	return power_mode;
 }

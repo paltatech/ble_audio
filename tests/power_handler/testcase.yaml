@@ -1,0 +1,9 @@
+tests:
+  # zephyr,adc-emul is a native_sim/native_posix-only simulation driver -
+  # there's no QEMU equivalent, so like gpio_handlers this suite is
+  # native_sim only by design, not by omission.
+  ble_audio.power_handler:
+    platform_allow: native_sim
+    integration_platforms:
+      - native_sim
+    tags: power_handler

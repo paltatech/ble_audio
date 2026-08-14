@@ -1,0 +1,48 @@
+/*
+ * Input power sense: a resistor divider (30k top / 10k bottom, wired
+ * into A0/P0.04/AIN0 - see arduino_adc's io-channel-map in
+ * nrf5340_cpuapp_common.dtsi) scales board input voltage down into the
+ * SAADC's measurable range. &adc is already "okay" at the board level;
+ * only the channel and the voltage-divider node are added here.
+ *
+ * Reference/gain follow zephyr/samples/drivers/adc/adc_dt's nrf52840dk
+ * overlay (ADC_REF_INTERNAL @ 600 mV, 1/6 gain -> 3.6V full-scale at the
+ * pin), rather than ADC_REF_VDD (used by nrf5340_audio_dk's own
+ * board_id voltage-divider) - internal reference doesn't depend on VDD
+ * regulation accuracy, so the mV math power_handler does is exact.
+ *
+ * output-ohms/full-ohms = 10k/40k (ratio 4) maps the 3.6V pin ceiling to
+ * a 14.4V real-world ceiling, comfortable headroom above the 4.0V
+ * high/low power threshold app_streamctrl.c checks against.
+ */
+
+#include <zephyr/dt-bindings/adc/adc.h>
+#include <zephyr/dt-bindings/adc/nrf-adc.h>
+
+/ {
+	aliases {
+		power-sense = &power_sense;
+	};
+
+	power_sense: power_sense {
+		compatible = "voltage-divider";
+		io-channels = <&adc 0>;
+		output-ohms = <10000>;
+		full-ohms = <40000>;
+	};
+};
+
+&adc {
+	#address-cells = <1>;
+	#size-cells = <0>;
+
+	channel@0 {
+		reg = <0>;
+		zephyr,gain = "ADC_GAIN_1_6";
+		zephyr,reference = "ADC_REF_INTERNAL";
+		zephyr,vref-mv = <600>;
+		zephyr,acquisition-time = <ADC_ACQ_TIME_DEFAULT>;
+		zephyr,input-positive = <NRF_SAADC_AIN0>;
+		zephyr,resolution = <12>;
+	};
+};

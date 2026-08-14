@@ -92,8 +92,9 @@ never run automatically — it's `make test-hil`, on demand.
 | Suite | Real module compiled | Technique | Platforms | Hardware needed |
 |---|---|---|---|---|
 | `codec_handler` | `middlewares/codec_handler/codec_handler.c` (real `liblc3`) | Value-parameterized (10-case LC3 freq/duration grid) | `native_sim`, `native_sim/native/64`, `mps3/an547` | none |
-| `app_streamctrl` | `application/app_streamctrl.c` | FFF mocking (4 active middleware fakes; `audio_handler`'s are commented out, see below) + `ztress` concurrency | `native_sim`, `native_sim/native/64`, `qemu_cortex_m3` | none |
+| `app_streamctrl` | `application/app_streamctrl.c` | FFF mocking (5 active middleware fakes; `audio_handler`'s are commented out, see below) + `ztress` concurrency | `native_sim`, `native_sim/native/64`, `qemu_cortex_m3` | none |
 | `gpio_handlers` | `middlewares/led_handler/`, `middlewares/button_handler/` (real) | Devicetree GPIO fakes (`zephyr,gpio-emul`) | `native_sim` only | none (emulated GPIO) |
+| `power_handler` | `middlewares/power_handler/power_handler.c` (real) | Devicetree ADC fakes (`zephyr,adc-emul`) | `native_sim` only | none (emulated ADC) |
 | `ble_audio.hil_boot` (`sample.yaml`, project root) | the real production image, unmodified | `harness: console`, ordered boot-log regex match | `nrf5340dk/nrf5340/cpuapp` | real DK + J-Link |
 
 Every `tests/*/prj.conf` also sets `CONFIG_ZTEST_SHUFFLE=y` — each suite
@@ -123,8 +124,11 @@ here — its SoC has no FPU, and this suite needs `CONFIG_FPU` for
 ### `app_streamctrl` — FFF mocking + `ztress`
 
 Compiles the real `app_streamctrl.c` against FFF fakes of everything it
-calls (`led_handler`, `button_handler`, `codec_handler`,
+calls (`led_handler`, `button_handler`, `power_handler`, `codec_handler`,
 `ble_audio_handler` — `audio_handler` is currently disabled, see below).
+The power-mode threshold logic (`> 4000 mV` = high power) lives in
+`app_streamctrl.c` itself, not `power_handler` - see the boundary test
+below.
 The fake `ble_audio_handler_start()` captures the callback struct
 `app_streamctrl` registers; tests invoke `captured_cb->connected()`,
 `->stream_recv()`, etc. directly instead of needing a real BLE
@@ -153,6 +157,20 @@ firing), just against an emulated controller instead of silicon.
 `native_sim` doesn't define by default. `gpio-emul` is host-simulation
 only (no QEMU equivalent), so this suite is `native_sim`-only by design,
 not by omission.
+
+### `power_handler` — devicetree ADC fakes
+
+Compiles the real `power_handler.c` against `native_sim`'s built-in
+`zephyr,adc-emul` controller (extended, not redeclared, in
+`boards/native_sim.overlay` - same pattern as `gpio_handlers`) plus a
+`voltage-divider` node kept at the same 10k/40k ratio as the real board
+overlay (`boards/nrf5340dk_nrf5340_cpuapp.overlay`), so simulated inputs
+map to the same real-world voltages on both. Tests drive specific inputs
+with `adc_emul_const_value_set()` and check `power_handler_read_mv()`
+scales them back correctly - deciding what a given voltage *means*
+("high" vs "low" power mode) is `app_streamctrl`'s job, not this
+middleware's (its threshold tests live in the `app_streamctrl` suite,
+FFF-mocking `power_handler_read_mv()` instead).
 
 ### `ble_audio.hil_boot` — the only one that touches real hardware
 
@@ -236,8 +254,9 @@ pass yet.
      dependencies, like `app_streamctrl`. Compile the real file under
      test; fake everything it calls.
    - **Real GPIO/peripheral driver code** → devicetree fakes
-     (`zephyr,gpio-emul` or similar), like `gpio_handlers`. Compiles the
-     real driver-facing code against an emulated controller.
+     (`zephyr,gpio-emul`, `zephyr,adc-emul`, or similar), like
+     `gpio_handlers`/`power_handler`. Compiles the real driver-facing
+     code against an emulated controller.
    - **Needs real silicon** (timing, real peripherals with no
      `native_sim` emulation) → HIL, extending `sample.yaml`. Prefer
      `harness: console` (regex match on boot/log output, like
