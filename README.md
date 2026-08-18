@@ -19,13 +19,14 @@ The DK has 4 LEDs and 4 buttons (`led0`-`led3`, `sw0`-`sw3`); the app
 currently only uses one of each (`led0` for connection status, `sw0`/
 `button0` wired to a generic press callback).
 
-[west.yml](west.yml) pulls `nrf` (`vx_sdk_nrf@io_board`) and
-`zephyr_boards` (`vx_zephyr_boards@ble_audio_board`) from `paltatech`. The
-`nrf` pin should move back to `develop`/`manifest-rev` once that branch is
-merged; `zephyr_boards` is no longer needed for the primary build target
-now that it's the standard `nrf5340dk` (its `ble_audio_board` definition
-isn't referenced anywhere in this repo's build path anymore) - still
-pulled for now, pending a decision on whether to drop it.
+[west.yml](west.yml) pulls `nrf` from the public
+[nrfconnect/sdk-nrf](https://github.com/nrfconnect/sdk-nrf), pinned to the
+`v2.7.0` release tag - no credentials needed, no `MY_GITHUB_TOKEN`. This
+project previously depended on `paltatech`'s private forks (`vx_sdk_nrf`,
+plus a `zephyr_boards` project for the now-abandoned custom
+`ble_audio_board`); switched to the public upstream for this demo, since
+neither fork's Viaanix-specific additions (proprietary cloud logging, an
+access-control protocol, the old custom board) are used by this project.
 
 ## SDK Version
 
@@ -168,13 +169,12 @@ Five workflows under `.github/workflows/`, one per concern:
   (`./prepare_release.sh`), fails on any compiler warning, uploads the
   result as a downloadable Actions artifact
 
-`test.yml` and `compile.yml` need a `MY_GITHUB_TOKEN` secret with read
-access to `paltatech/vx_sdk_nrf` and `paltatech/vx_zephyr_boards` (same
-convention every sibling paltatech firmware repo's CI uses) — see
-[docs/testing_ecosystem.md](docs/testing_ecosystem.md) for what's
-verified about these workflows vs. not (none have been run for real; no
-way to trigger a GitHub Actions run from the environment they were
-written in).
+No secrets needed — `west.yml` addresses the public `nrfconnect/sdk-nrf`
+over HTTPS, so `test.yml` and `compile.yml` fetch it with no credentials
+at all. See [docs/testing_ecosystem.md](docs/testing_ecosystem.md) for
+what's verified about these workflows vs. not (none have been run for
+real; no way to trigger a GitHub Actions run from the environment they
+were written in).
 
 ## Debug Commands
 

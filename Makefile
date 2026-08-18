@@ -7,7 +7,6 @@ ZEPHYR_PROJECT_PATH := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
 
 include tools/make/config.mk
 
-ZEPHYR_BOARD_ROOT ?= $(realpath $(ZEPHYR_PROJECT_PATH)/../../zephyr_boards)
 ZEPHYR_BUILD_PATH = $(ZEPHYR_PROJECT_PATH)/_build_$(PROJECT_NAME)_$(BUILD_SUFFIX)
 
 # ============================================================================
@@ -66,7 +65,6 @@ build:
 	west build -p always . \
 		--build-dir $(ZEPHYR_BUILD_PATH) \
 		-DNCS_TOOLCHAIN_VERSION=NONE \
-		-DBOARD_ROOT=$(ZEPHYR_BOARD_ROOT) \
 		-DBOARD=$(BOARD)
 
 clean:

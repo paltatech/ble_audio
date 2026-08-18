@@ -1,7 +1,5 @@
 cmake_minimum_required(VERSION 3.13.1)
 
-set(BOARD_ROOT $ENV{ZEPHYR_BOARD_ROOT})
-
 find_package(
   Zephyr
   REQUIRED

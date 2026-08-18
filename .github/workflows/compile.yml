@@ -30,10 +30,9 @@ jobs:
           rm /home/runner/ncs/toolchains/*/usr/local/bin/git || true
 
       # See test.yml for why this is one continuous script rather than
-      # separate steps, and why it assumes a MY_GITHUB_TOKEN secret.
+      # separate steps. west.yml addresses the public nrfconnect/sdk-nrf
+      # over HTTPS - no credentials needed.
       - name: Init west workspace and build
-        env:
-          GITHUB_TOKEN: ${{ secrets.MY_GITHUB_TOKEN }}
         run: |
           set -e
 
@@ -46,7 +45,6 @@ jobs:
           export ZEPHYR_SDK_INSTALL_DIR="$NCS_TOOLCHAIN/opt/zephyr-sdk"
 
           cd ${{ env.PROJECTS_PATH }}
-          git config --global url."https://x-access-token:${GITHUB_TOKEN}@github.com/paltatech/".insteadOf "git@github.com:paltatech/"
 
           west init -l ble_audio
           mv .west ../

@@ -62,10 +62,6 @@ export ZEPHYR_TOOLCHAIN_VARIANT=zephyr
 export ZEPHYR_SDK_INSTALL_DIR=$NCS_TOOLCHAIN/opt/zephyr-sdk
 add_to_path "$ZEPHYR_SDK_INSTALL_DIR"
 
-# Export board root for custom board definitions
-export ZEPHYR_BOARD_ROOT=$WEST_WORKSPACE/zephyr_boards
-echo "Board root: $ZEPHYR_BOARD_ROOT"
-
 source $WEST_WORKSPACE/zephyr/zephyr-env.sh
 west zephyr-export
 

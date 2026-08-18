@@ -523,6 +523,17 @@ as Priority 4's HIL section:**
   the private-repo clone step in both workflows. Whoever adds this repo
   to GitHub Actions should confirm that secret (or an equivalent) is set
   before relying on either of them.
+
+  **Update:** this predicted failure mode was confirmed for real - a
+  live `test.yml` run failed exactly here (`fatal: Authentication failed
+  for 'https://github.com/paltatech/vx_sdk_nrf/'`), because `MY_GITHUB_
+  TOKEN` wasn't configured for this repo. Rather than chase down the
+  secret, `west.yml` was switched to the public
+  [nrfconnect/sdk-nrf](https://github.com/nrfconnect/sdk-nrf)`@v2.7.0`
+  for this demo (see the "Board note" and "West manifest" sections
+  below) - `MY_GITHUB_TOKEN` and the `insteadOf` URL rewrite are removed
+  from both workflows entirely, since there's no private repo left to
+  authenticate to.
 - **Scope decision:** `paltatech-guidelines-docs/workflow-templates/compile.yml`
   and its siblings' equivalents use `runs-on: self-hosted` with a
   pre-provisioned image containing the toolchain. `test.yml` and
@@ -544,11 +555,15 @@ priorities:
   Nordic's Audio DK board definition) to the standard, upstream
   `nrf5340dk/nrf5340/cpuapp` — no custom board needed at all now.
   Verified: `west build` succeeds for the real production app with no
-  `--board-root`/`BOARD_ROOT` needed. `zephyr_boards`
-  (`vx_zephyr_boards@ble_audio_board`) is still pulled by `west.yml` but
-  is no longer referenced anywhere in this repo's build path - left in
-  place pending a decision on whether to drop it (see root
-  `README.md`'s Status section).
+  `--board-root`/`BOARD_ROOT` needed.
+
+  **Update:** `zephyr_boards` (`vx_zephyr_boards@ble_audio_board`) sat
+  unused in `west.yml` for a while after this - pulled every `west
+  update` but never referenced in the build path, pending a decision on
+  whether to drop it. Resolved: removed from `west.yml` entirely (see
+  "West manifest switched to public `nrfconnect/sdk-nrf`" below) -
+  `zephyr_boards` was Viaanix's private, so dropping it was also a step
+  toward not needing `MY_GITHUB_TOKEN` at all.
 - **`audio_handler` (I2S output) disabled:** the nRF5340 DK has no I2S
   codec chip wired up - its `i2s0` devicetree node exists (SoC-level)
   but is left `status = "disabled"`, with no board overlay enabling it.
@@ -593,6 +608,60 @@ priorities:
   `pytest/test_boot.py`) retargeted and re-verified**, not just
   relabeled - see the board note under Priority 4 above for what was
   re-run.
+
+## West manifest switched to public `nrfconnect/sdk-nrf`
+
+A real `test.yml` CI run failed at `west update`:
+```
+fatal: Authentication failed for 'https://github.com/paltatech/vx_sdk_nrf/'
+```
+exactly the failure mode this doc's Priority 5 section had predicted but
+left unverified - `MY_GITHUB_TOKEN` wasn't configured for this repo.
+
+Rather than just fix the secret, this was a chance to check whether the
+private-repo dependency was even real. It's not one repo but three, once
+traced all the way down:
+
+- **`vx_sdk_nrf`** (`ble_audio/west.yml`, top-level) - genuinely
+  load-bearing. Its `io_board` branch carries real Viaanix-specific
+  patches (a proprietary `vx_cloud` logging subsystem, OSDP access-control
+  GPIO handling) on top of stock NCS. Confirmed load-bearing, not just
+  present: `modules/nrf/subsys/vx_cloud/vx_cloud_log.c` actually compiles
+  into every `ble_audio` build.
+- **`vx_zephyr_boards`** (`ble_audio/west.yml`, top-level) - vestigial.
+  Already flagged as unused-but-still-pulled in the Board swap section
+  above; a copy of Viaanix's shared boards monorepo, pinned to a branch
+  whose only unique commit adds the abandoned `ble_audio_board`.
+- **`vx_sdk_zephyr`** (`nrf/west.yml`, *nested* inside `vx_sdk_nrf` -
+  invisible from `ble_audio/west.yml` alone) - the private fork's own
+  manifest points `zephyr` at a second Viaanix fork, not stock NCS's
+  `nrfconnect/sdk-zephyr`. Its extra commits are also OSDP patches -
+  unrelated to a BLE Audio headset.
+
+None of the three forks' Viaanix-specific content (`vx_cloud`, OSDP, the
+old custom board) is used anywhere in `ble_audio`. For this demo,
+`ble_audio/west.yml`'s `sdk_nrf` project was repointed at the public
+[nrfconnect/sdk-nrf](https://github.com/nrfconnect/sdk-nrf), pinned to
+the `v2.7.0` release tag - confirmed to exist and be fetchable over
+plain HTTPS before switching (`git ls-remote --tags`). That public tag's
+own `west.yml` imports `nrfconnect/sdk-zephyr@v3.6.99-ncs2` - the exact
+Zephyr version string every build this session has already reported
+(`Zephyr version: v3.6.99-ncs2-...`), so the swap changes which fork
+supplies that version, not the version itself. `zephyr_boards` was
+dropped from the manifest entirely rather than repointed anywhere, since
+nothing needs it. With no private repos left in the dependency graph,
+`MY_GITHUB_TOKEN` and the `git config ... insteadOf` rewrite were removed
+from `test.yml` and `compile.yml` - there's nothing left to authenticate
+to.
+
+Verified: `west init -l ble_audio` + `west update --narrow -o=--depth=1`
+against the new manifest, in a throwaway scratch workspace, completes
+with exit code 0 - `sdk_nrf`, `zephyr`, and every nested NCS/Zephyr
+module fetch cleanly over plain HTTPS, zero authentication prompts.
+
+**Still not verified:** a real GitHub Actions run confirming the CI
+failure is actually resolved end to end (same "no way to trigger real
+Actions runs from this environment" limitation as the rest of this doc).
 
 ## Real hardware bug: network core had no ISO/Extended Advertising support
 
